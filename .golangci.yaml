@@ -1,0 +1,49 @@
+version: '2'
+linters:
+  enable:
+  - asasalint
+  - asciicheck
+  - bidichk
+  - bodyclose
+  - copyloopvar
+  - durationcheck
+  - errchkjson
+  - errname
+  - errorlint
+  - exhaustive
+  - gocritic
+  - gosec
+  - misspell
+  - modernize
+  - nilerr
+  - noctx
+  - nolintlint
+  - predeclared
+  - revive
+  - unconvert
+  - unparam
+  - usestdlibvars
+  - usetesting
+  - wastedassign
+  - whitespace
+  settings:
+    gocritic:
+      enabled-tags:
+      - diagnostic
+      - performance
+      - style
+      disabled-checks:
+      - hugeParam
+    revive:
+      rules:
+      - name: var-naming
+        disabled: true
+  exclusions:
+    presets:
+    - comments
+    - common-false-positives
+    - std-error-handling
+formatters:
+  enable:
+  - gofmt
+  - goimports
