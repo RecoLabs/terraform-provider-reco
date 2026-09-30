@@ -53,8 +53,9 @@ func (p *recoProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp 
 				Sensitive:   true,
 			},
 			"base_url": schema.StringAttribute{
-				Description: "Base URL of your Reco tenant, the same URL you use to sign in to the Reco platform. Must use https. May also be set via the RECO_BASE_URL environment variable.",
-				Optional:    true,
+				Description: "Base URL of your Reco tenant, the same URL you use to sign in to the Reco platform. " +
+					"Must use https. May also be set via the RECO_BASE_URL environment variable.",
+				Optional: true,
 			},
 		},
 	}

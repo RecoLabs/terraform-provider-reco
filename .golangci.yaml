@@ -5,21 +5,57 @@ linters:
   - asciicheck
   - bidichk
   - bodyclose
+  - clickhouselint
   - copyloopvar
+  - decorder
+  - dogsled
+  - dupl
   - durationcheck
   - errchkjson
   - errname
   - errorlint
   - exhaustive
+  - exptostd
+  - fatcontext
+  - funlen
+  - goconst
   - gocritic
+  - gocyclo
+  - goheader
+  - gomodguard_v2
+  - goprintffuncname
   - gosec
+  - gosmopolitan
+  - grouper
+  - iface
+  - importas
+  - intrange
+  - iotamixing
+  - lll
+  - loggercheck
+  - makezero
   - misspell
   - modernize
+  - nakedret
   - nilerr
+  - nilnesserr
   - noctx
   - nolintlint
+  - nosprintfhostport
+  - prealloc
   - predeclared
+  - promlinter
+  - protogetter
+  - reassign
+  - recvcheck
   - revive
+  - rowserrcheck
+  - sloglint
+  - spancheck
+  - sqlclosecheck
+  - staticcheck
+  - testableexamples
+  - testifylint
   - unconvert
   - unparam
   - usestdlibvars
@@ -27,23 +63,105 @@ linters:
   - wastedassign
   - whitespace
   settings:
+    funlen:
+      lines: 100
+      statements: 50
     gocritic:
       enabled-tags:
       - diagnostic
+      - experimental
+      - opinionated
       - performance
       - style
-      disabled-checks:
-      - hugeParam
+    lll:
+      line-length: 160
     revive:
       rules:
       - name: var-naming
         disabled: true
+    importas:
+      no-unaliased: true
+      alias:
+      - pkg: google.golang.org/grpc/health/grpc_health_v1
+        alias: healthgrpc
+      - pkg: github.com/grpc-ecosystem/go-grpc-middleware
+        alias: grpc_middleware
+      - pkg: github.com/grpc-ecosystem/go-grpc-middleware/auth
+        alias: grpc_auth
+      - pkg: github.com/grpc-ecosystem/go-grpc-middleware/validator
+        alias: grpc_validator
+      - pkg: github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing
+        alias: grpc_opentracing
+      - pkg: github.com/go-kit/kit/transport/grpc
+        alias: grpckit
+      - pkg: github.com/opentracing/opentracing-go
+        alias: opentracinggo
+      - pkg: github.com/aws/aws-sdk-go-v2/config
+        alias: aws_config
+      - pkg: github.com/recolabs/reco/slm-orchestrator-service/tritonclient/proto/gen
+        alias: tritonpb
+      - pkg: github.com/recolabs/reco/reco-proto/gen/go/reco/services/v1
+        alias: pb
+      - pkg: github.com/recolabs/reco/reco-proto/gen/go/data/models/v1
+        alias: pb_models
+      - pkg: github.com/recolabs/reco/reco-proto/gen/go/data/topics/v1
+        alias: pb_topics
+      - pkg: github.com/recolabs/reco/reco-proto/gen/go/data/redis/v1
+        alias: pb_redis
   exclusions:
     presets:
     - comments
     - common-false-positives
+    - legacy
     - std-error-handling
+    rules:
+    - path: (.+)\.go$
+      text: G101
+    - path: (.+)\.go$
+      text: G404
+    - path: (.+)\.go$
+      text: G115
+    - path: (.+)\.go$
+      text: G117
+    - path: (.+)\.go$
+      text: Error return value of `.*log.*ger.*\.Log` is not checked
+    # clickhouse-go v2.34's driver.Batch has Abort and Send but no Close, so chbatchclosecheck
+    # cannot be satisfied; release each batch with Send or a deferred Abort instead.
+    - linters:
+      - clickhouselint
+      text: chbatchclosecheck
+    # terraform-provider-reco: the Terraform plugin framework's resource and data source
+    # interfaces take their request structs by value.
+    - path: internal/(resources|datasources)/.+\.go$
+      linters:
+      - gocritic
+      text: 'hugeParam: (req|_) is heavy'
+    # terraform-provider-reco: each resource implements the framework's CRUD methods in the
+    # same shape; a generic helper over model, definition and client types reads worse.
+    - path: internal/resources/.+\.go$
+      linters:
+      - dupl
+    # Migrations are self-contained so each file reads and runs in isolation: they never share
+    # code or constants, so near-duplicate SQL and repeated literals across sibling migrations
+    # (e.g. seed option labels) are by design.
+    - path: migrations/\d{14}_[^/]+\.go$
+      linters:
+      - dupl
+      - goconst
+    paths:
+    - third_party$
+    - builtin$
+    - examples$
+issues:
+  fix: true
 formatters:
   enable:
+  - gci
   - gofmt
+  - gofumpt
   - goimports
+  exclusions:
+    paths:
+    - third_party$
+    - builtin$
+    - examples$

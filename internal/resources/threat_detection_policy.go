@@ -80,9 +80,10 @@ func (r *threatDetectionPolicyResource) Schema(_ context.Context, _ resource.Sch
 				Validators:  []validator.String{stringvalidator.OneOf(riskLevels...)},
 			},
 			"violation_risk_type": schema.StringAttribute{
-				Description: "Risk category: RISK_TYPE_UNKNOWN, RISK_TYPE_DATA, RISK_TYPE_USER, RISK_TYPE_USER_TARGET, RISK_TYPE_USER_GROUP, or RISK_TYPE_APPLICATION. " + writeOnlyNote,
-				Required:    true,
-				Validators:  []validator.String{stringvalidator.OneOf(riskTypes...)},
+				Description: "Risk category: RISK_TYPE_UNKNOWN, RISK_TYPE_DATA, RISK_TYPE_USER, RISK_TYPE_USER_TARGET, " +
+					"RISK_TYPE_USER_GROUP, or RISK_TYPE_APPLICATION. " + writeOnlyNote,
+				Required:   true,
+				Validators: []validator.String{stringvalidator.OneOf(riskTypes...)},
 			},
 			"default_status": schema.StringAttribute{
 				Description: "Initial status for new instances: POLICY_STATUS_OFF, POLICY_STATUS_PREVIEW, or POLICY_STATUS_ON. " + writeOnlyNote,
