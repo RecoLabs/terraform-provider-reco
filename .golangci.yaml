@@ -17,6 +17,7 @@ linters:
   - exhaustive
   - exptostd
   - fatcontext
+  - forbidigo
   - funlen
   - goconst
   - gocritic
@@ -63,6 +64,16 @@ linters:
   - wastedassign
   - whitespace
   settings:
+    forbidigo:
+      # Match by package path, not by the import alias written in the source.
+      analyze-types: true
+      forbid:
+      # redis-runtime-context holds every tenant's entity blobs. Only the two wiring
+      # points may open it, so all access goes through the tenant-scoped lookup and
+      # sink code (keys from contextmapping.KeysFromContext, blobs read via decodeBlob).
+      - pattern: (^|\.)RedisDB_REDIS_DB_RUNTIME_CONTEXT$
+        pkg: ^github\.com/recolabs/reco/reco-proto/gen/go/data/redis/v1$
+        msg: open redis-runtime-context only in the runtime-policy-service or kafka-dbs-sink-daemon main.go
     funlen:
       lines: 100
       statements: 50
@@ -125,6 +136,10 @@ linters:
       text: G117
     - path: (.+)\.go$
       text: Error return value of `.*log.*ger.*\.Log` is not checked
+    - path: ^(cmd/(runtime_policy_service|kafka_dbs_sink_daemon)/main|redis-context/redis-context)\.go$
+      linters:
+      - forbidigo
+      text: redis-runtime-context
     # clickhouse-go v2.34's driver.Batch has Abort and Send but no Close, so chbatchclosecheck
     # cannot be satisfied; release each batch with Send or a deferred Abort instead.
     - linters:
