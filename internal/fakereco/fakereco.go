@@ -28,6 +28,8 @@ const (
 
 	apiPrefix = "/api/v1/external-api"
 	epoch     = "2026-01-01T00:00:00Z"
+
+	noExpiration = "1970-01-01T00:00:00Z"
 )
 
 var filterRe = regexp.MustCompile(`^(\w+) eq "((?:[^"\\]|\\.)*)"$`)
@@ -531,11 +533,15 @@ func (s *Server) servePolicies(w http.ResponseWriter, r *http.Request, rest stri
 
 func policyFromDef(d client.ThreatDetectionPolicyDefinition) client.ThreatDetectionPolicy {
 	created := epoch
+	status := d.DefaultStatus
+	if status == "" {
+		status = "POLICY_STATUS_OFF"
+	}
 	return client.ThreatDetectionPolicy{
 		Name:       d.Title,
 		Apps:       []string{d.DataSource},
 		Severity:   d.ViolationRiskLevel,
-		Status:     d.DefaultStatus,
+		Status:     status,
 		Tags:       d.Tags,
 		CreatedAt:  &created,
 		PolicyType: "POLICY_TYPE_THREAT_DETECTION",
@@ -556,6 +562,12 @@ func (s *Server) serveAPIKeys(w http.ResponseWriter, r *http.Request, rest strin
 			}
 		}
 		created := time.Now().UTC().Format(time.RFC3339)
+		expiration := req.Expiration
+		if expiration == nil {
+			// The real API reports "no expiration" as the Unix epoch.
+			noExpiry := noExpiration
+			expiration = &noExpiry
+		}
 		key := client.ApiKey{
 			ID:           s.nextID("key"),
 			Name:         req.Name,
@@ -563,7 +575,7 @@ func (s *Server) serveAPIKeys(w http.ResponseWriter, r *http.Request, rest strin
 			CreatedBy:    "tf-test@example.com",
 			State:        "APPLICATION_KEY_STATE_ACTIVE",
 			PermittedIps: req.PermittedIps,
-			Expiration:   req.Expiration,
+			Expiration:   expiration,
 			CreatedAt:    &created,
 		}
 		s.keys = append(s.keys, key)
