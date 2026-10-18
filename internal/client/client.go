@@ -22,6 +22,20 @@ type Client struct {
 	baseURL    string
 	pageSize   int64
 	httpClient *http.Client
+	backoff    func(attempt int) time.Duration
+}
+
+// Option customizes a Client created by New.
+type Option func(*Client)
+
+// WithRetryBackoff overrides how long to wait before retry attempt n (n starts at 1).
+// Tests use it to avoid sleeping between retries.
+func WithRetryBackoff(fn func(attempt int) time.Duration) Option {
+	return func(c *Client) { c.backoff = fn }
+}
+
+func defaultBackoff(attempt int) time.Duration {
+	return time.Duration(1<<attempt) * time.Second
 }
 
 func (c *Client) WithPageSize(n int64) *Client {
@@ -36,19 +50,24 @@ func (c *Client) effectivePageSize() int64 {
 	return 1000
 }
 
-func New(baseURL, apiKey, version string) *Client {
+func New(baseURL, apiKey, version string, opts ...Option) *Client {
 	transport := &userAgentTransport{
 		base:      http.DefaultTransport,
 		userAgent: fmt.Sprintf("reco-tf-provider/%s", version),
 		apiKey:    apiKey,
 	}
-	return &Client{
+	c := &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout:   defaultTimeout,
 			Transport: transport,
 		},
+		backoff: defaultBackoff,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 type userAgentTransport struct {
@@ -84,11 +103,10 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	var lastErr error
 	for attempt := range maxRetries {
 		if attempt > 0 {
-			wait := time.Duration(1<<attempt) * time.Second
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case <-time.After(wait):
+			case <-time.After(c.backoff(attempt)):
 			}
 		}
 
