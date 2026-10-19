@@ -49,6 +49,8 @@ resource "reco_user" "alice" {
 | `reco_api_key` | API key |
 | `reco_posture_check` | Posture check policy |
 | `reco_threat_detection_policy` | Behavioral threat detection policy |
+| `reco_custom_compliance_framework` | Custom compliance framework and its controls |
+| `reco_custom_dashboard` | Custom dashboard (the API cannot delete dashboards; destroy only removes state) |
 
 ## Data Sources
 

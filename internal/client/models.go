@@ -225,3 +225,90 @@ type UpdateApiKeyResponse struct {
 type listApiKeysResponse struct {
 	Keys []ApiKey `json:"keys"`
 }
+
+type ComplianceFrameworkDefinition struct {
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Type        string `json:"type,omitempty"`
+	IsActive    bool   `json:"isActive,omitempty"`
+}
+
+type CreateComplianceFrameworkRequest struct {
+	Definition ComplianceFrameworkDefinition `json:"definition"`
+}
+
+type CreateComplianceFrameworkResponse struct {
+	ID string `json:"id"`
+}
+
+type ComplianceFrameworkInput struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Type        string `json:"type,omitempty"`
+	IsActive    bool   `json:"isActive,omitempty"`
+}
+
+type ComplianceControl struct {
+	ControlID        string   `json:"controlId"`
+	Title            string   `json:"title"`
+	Description      string   `json:"description,omitempty"`
+	ParentControlID  string   `json:"parentControlId,omitempty"`
+	RelatedPolicyIDs []string `json:"relatedPolicyIds,omitempty"`
+	Manual           bool     `json:"manual,omitempty"`
+	Skipped          bool     `json:"skipped,omitempty"`
+}
+
+type UpsertComplianceFrameworkRequest struct {
+	Framework ComplianceFrameworkInput `json:"framework"`
+	Controls  []ComplianceControl      `json:"controls"`
+}
+
+type ComplianceFramework struct {
+	ID          string  `json:"id"`
+	Title       string  `json:"title"`
+	Description string  `json:"description,omitempty"`
+	Version     string  `json:"version,omitempty"`
+	Type        string  `json:"type,omitempty"`
+	IsCustom    bool    `json:"isCustom"`
+	IsActive    bool    `json:"isActive"`
+	CreatedAt   *string `json:"createdAt,omitempty"`
+	UpdatedAt   *string `json:"updatedAt,omitempty"`
+}
+
+type listComplianceFrameworksResponse struct {
+	TotalResults         json.Number           `json:"totalResults"`
+	ItemsPerPage         json.Number           `json:"itemsPerPage"`
+	ComplianceFrameworks []ComplianceFramework `json:"complianceFrameworks"`
+}
+
+type Dashboard struct {
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Spec          string  `json:"spec"`
+	Visibility    string  `json:"visibility,omitempty"`
+	FolderPath    string  `json:"folderPath,omitempty"`
+	CreatedBy     string  `json:"createdBy,omitempty"`
+	CreatedByName string  `json:"createdByName,omitempty"`
+	CreatedAt     *string `json:"createdAt,omitempty"`
+	UpdatedAt     *string `json:"updatedAt,omitempty"`
+}
+
+type SaveDashboardRequest struct {
+	ID         string `json:"id,omitempty"`
+	Name       string `json:"name"`
+	Spec       string `json:"spec"`
+	Visibility string `json:"visibility,omitempty"`
+	FolderPath string `json:"folderPath,omitempty"`
+}
+
+type SaveDashboardResponse struct {
+	Dashboard Dashboard `json:"dashboard"`
+}
+
+type listDashboardsResponse struct {
+	Dashboards    []Dashboard `json:"dashboards"`
+	NextPageToken string      `json:"nextPageToken,omitempty"`
+}
