@@ -156,6 +156,18 @@ linters:
     - path: internal/resources/.+\.go$
       linters:
       - dupl
+    # Test code repeats string literals (resource addresses, API field names, enum values) on purpose;
+    # naming each one hurts readability more than it helps.
+    - path: (_test\.go|internal/fakereco/.+\.go)$
+      linters:
+      - goconst
+    # terraform-provider-reco: internal/fakereco is test support that mirrors the API handlers
+    # one-to-one, so near-duplicate handlers and by-value model structs are by design.
+    - path: internal/fakereco/.+\.go$
+      linters:
+      - dupl
+      - gocritic
+      - errchkjson
     # Migrations are self-contained so each file reads and runs in isolation: they never share
     # code or constants, so near-duplicate SQL and repeated literals across sibling migrations
     # (e.g. seed option labels) are by design.
