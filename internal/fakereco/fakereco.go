@@ -56,10 +56,17 @@ type Server struct {
 	requests []string
 }
 
-// New starts a fake API and shuts it down when the test ends. It is seeded with the two built-in
-// system roles that real tenants always have.
+// New starts a fake API and shuts it down when the test ends.
 func New(tb testing.TB) *Server {
 	tb.Helper()
+	s := Start()
+	tb.Cleanup(s.Close)
+	return s
+}
+
+// Start starts a fake API that the caller must Close. It is seeded with the two built-in system
+// roles that real tenants always have.
+func Start() *Server {
 	s := &Server{
 		roles: []client.RecoRole{
 			{Name: "ROLE_SECURITY_VIEWER", Description: "Read-only security viewer", Type: "USER_ROLE_TYPE_SYSTEM", Permissions: []string{"PERM_ALERTS_READ"}},
@@ -67,7 +74,6 @@ func New(tb testing.TB) *Server {
 		},
 	}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
-	tb.Cleanup(s.Close)
 	return s
 }
 

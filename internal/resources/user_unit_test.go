@@ -24,9 +24,10 @@ resource "reco_user" "test" {
 }
 
 func findUser(srv *fakereco.Server, email string) *client.RecoUser {
-	for _, u := range srv.Users() {
-		if u.EmailAddress == email {
-			return &u
+	list := srv.Users()
+	for i := range list {
+		if list[i].EmailAddress == email {
+			return &list[i]
 		}
 	}
 	return nil

@@ -30,9 +30,10 @@ resource "reco_posture_check" "test" {
 }
 
 func findPostureCheck(srv *fakereco.Server, title string) *client.PostureCheck {
-	for _, c := range srv.PostureChecks() {
-		if c.Name == title {
-			return &c
+	list := srv.PostureChecks()
+	for i := range list {
+		if list[i].Name == title {
+			return &list[i]
 		}
 	}
 	return nil

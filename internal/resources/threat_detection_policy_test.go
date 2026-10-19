@@ -17,8 +17,8 @@ func TestAccThreatDetectionPolicy_basic(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	title := fmt.Sprintf("TF Acc ITDR Policy %d", ts)
+	ts := testAccSuffix()
+	title := fmt.Sprintf("tf-acc-itdr-policy-%s", ts)
 	renamed := title + " Renamed"
 
 	resource.Test(t, resource.TestCase{
@@ -49,8 +49,8 @@ func TestAccThreatDetectionPolicy_import(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	title := fmt.Sprintf("TF Acc ITDR Import %d", ts)
+	ts := testAccSuffix()
+	title := fmt.Sprintf("tf-acc-itdr-import-%s", ts)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),

@@ -27,9 +27,10 @@ resource "reco_threat_detection_policy" "test" {
 }
 
 func findPolicy(srv *fakereco.Server, title string) *client.ThreatDetectionPolicy {
-	for _, p := range srv.Policies() {
-		if p.Name == title {
-			return &p
+	list := srv.Policies()
+	for i := range list {
+		if list[i].Name == title {
+			return &list[i]
 		}
 	}
 	return nil

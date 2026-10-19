@@ -17,8 +17,8 @@ func TestAccPostureCheck_basic(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	title := fmt.Sprintf("TF Acc Posture Check %d", ts)
+	ts := testAccSuffix()
+	title := fmt.Sprintf("tf-acc-posture-check-%s", ts)
 	renamed := title + " Renamed"
 
 	resource.Test(t, resource.TestCase{
@@ -49,8 +49,8 @@ func TestAccPostureCheck_import(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	title := fmt.Sprintf("TF Acc Posture Import %d", ts)
+	ts := testAccSuffix()
+	title := fmt.Sprintf("tf-acc-posture-import-%s", ts)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),

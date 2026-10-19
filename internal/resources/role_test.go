@@ -17,7 +17,7 @@ func TestAccRecoRole_basic(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	name := fmt.Sprintf("tf-acc-role-%d", testTimestamp())
+	name := fmt.Sprintf("tf-acc-role-%s", testAccSuffix())
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),
@@ -40,7 +40,7 @@ func TestAccRecoRole_update(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	name := fmt.Sprintf("tf-acc-role-upd-%d", testTimestamp())
+	name := fmt.Sprintf("tf-acc-role-upd-%s", testAccSuffix())
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),
@@ -64,7 +64,7 @@ func TestAccRecoRole_import(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	name := fmt.Sprintf("tf-acc-role-imp-%d", testTimestamp())
+	name := fmt.Sprintf("tf-acc-role-imp-%s", testAccSuffix())
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),

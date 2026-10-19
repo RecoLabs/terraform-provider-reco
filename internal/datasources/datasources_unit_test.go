@@ -121,7 +121,7 @@ func dataSourceCases() []dataSourceCase {
 	}
 }
 
-func (c dataSourceCase) config(srv *fakereco.Server) string {
+func (c *dataSourceCase) config(srv *fakereco.Server) string {
 	return unitProviderConfig(srv) + fmt.Sprintf("\ndata %q \"all\" {}\n", c.typeName)
 }
 
@@ -150,9 +150,8 @@ func TestDataSources_listSeededItems(t *testing.T) {
 			tc.seed(srv, seeded)
 
 			addr := "data." + tc.typeName + ".all"
-			checks := []resource.TestCheckFunc{
-				resource.TestCheckResourceAttr(addr, tc.listAttr+".#", strconv.Itoa(seeded+tc.baseCount)),
-			}
+			checks := make([]resource.TestCheckFunc, 0, 1+len(tc.firstItem))
+			checks = append(checks, resource.TestCheckResourceAttr(addr, tc.listAttr+".#", strconv.Itoa(seeded+tc.baseCount)))
 			for attr, want := range tc.firstItem {
 				checks = append(checks, resource.TestCheckResourceAttr(addr, fmt.Sprintf("%s.%d.%s", tc.listAttr, tc.firstIndex, attr), want))
 			}

@@ -24,8 +24,9 @@ func factories() map[string]func() (tfprotov6.ProviderServer, error) {
 func TestProvider_registersAllResourcesAndDataSources(t *testing.T) {
 	p := provider.New("test")()
 
-	var resources []string
-	for _, f := range p.Resources(t.Context()) {
+	resourceFactories := p.Resources(t.Context())
+	resources := make([]string, 0, len(resourceFactories))
+	for _, f := range resourceFactories {
 		var resp resource.MetadataResponse
 		f().Metadata(t.Context(), resource.MetadataRequest{ProviderTypeName: "reco"}, &resp)
 		resources = append(resources, resp.TypeName)
@@ -36,8 +37,9 @@ func TestProvider_registersAllResourcesAndDataSources(t *testing.T) {
 		t.Errorf("resources = %v, want %v", resources, wantResources)
 	}
 
-	var dataSources []string
-	for _, f := range p.DataSources(t.Context()) {
+	dataSourceFactories := p.DataSources(t.Context())
+	dataSources := make([]string, 0, len(dataSourceFactories))
+	for _, f := range dataSourceFactories {
 		var resp datasource.MetadataResponse
 		f().Metadata(t.Context(), datasource.MetadataRequest{ProviderTypeName: "reco"}, &resp)
 		dataSources = append(dataSources, resp.TypeName)
