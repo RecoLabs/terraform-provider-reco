@@ -5,6 +5,7 @@ const (
 	attrResource     = "resource"
 	attrResourceName = "resource_name"
 	attrName         = "name"
+	attrTitle        = "title"
 	attrDescription  = "description"
 	attrCreatedAt    = "created_at"
 
@@ -22,4 +23,10 @@ var (
 		"RISK_TYPE_APPLICATION",
 	}
 	policyStatuses = []string{"POLICY_STATUS_OFF", "POLICY_STATUS_PREVIEW", "POLICY_STATUS_ON"}
+
+	dashboardVisibilities = []string{
+		"DASHBOARD_VISIBILITY_PRIVATE",
+		"DASHBOARD_VISIBILITY_SHARED_READ",
+		"DASHBOARD_VISIBILITY_SHARED_WRITE",
+	}
 )

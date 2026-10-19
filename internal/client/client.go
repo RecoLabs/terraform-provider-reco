@@ -428,6 +428,63 @@ func (c *Client) ListAllIntegrations(ctx context.Context) ([]Integration, error)
 	})
 }
 
+func (c *Client) CreateComplianceFramework(ctx context.Context, def *ComplianceFrameworkDefinition) (string, error) {
+	var resp CreateComplianceFrameworkResponse
+	if err := c.do(ctx, http.MethodPost, "/compliance-frameworks/create", CreateComplianceFrameworkRequest{Definition: *def}, &resp); err != nil {
+		return "", err
+	}
+	return resp.ID, nil
+}
+
+func (c *Client) UpsertComplianceFramework(ctx context.Context, req *UpsertComplianceFrameworkRequest) error {
+	if req.Controls == nil {
+		req.Controls = []ComplianceControl{}
+	}
+	return c.do(ctx, http.MethodPut, "/compliance-frameworks/upsert", req, nil)
+}
+
+func (c *Client) GetComplianceFrameworkByID(ctx context.Context, id string) (*ComplianceFramework, error) {
+	params := url.Values{}
+	params.Set("filters", "id eq "+scimQuote(id))
+	var resp listComplianceFrameworksResponse
+	if err := c.do(ctx, http.MethodGet, "/compliance-frameworks/list?"+params.Encode(), nil, &resp); err != nil {
+		return nil, err
+	}
+	for i := range resp.ComplianceFrameworks {
+		if resp.ComplianceFrameworks[i].ID == id {
+			return &resp.ComplianceFrameworks[i], nil
+		}
+	}
+	return nil, &NotFoundError{Message: fmt.Sprintf("compliance framework with id %q not found", id)}
+}
+
+func (c *Client) DeleteComplianceFramework(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodDelete, "/compliance-frameworks/"+url.PathEscape(id), nil, nil)
+}
+
+func (c *Client) SaveDashboard(ctx context.Context, req *SaveDashboardRequest) (*Dashboard, error) {
+	var resp SaveDashboardResponse
+	if err := c.do(ctx, http.MethodPost, "/dashboards/save", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Dashboard, nil
+}
+
+func (c *Client) GetDashboardByID(ctx context.Context, id string) (*Dashboard, error) {
+	params := url.Values{}
+	params.Add("ids", id)
+	var resp listDashboardsResponse
+	if err := c.do(ctx, http.MethodGet, "/dashboards/list?"+params.Encode(), nil, &resp); err != nil {
+		return nil, err
+	}
+	for i := range resp.Dashboards {
+		if resp.Dashboards[i].ID == id {
+			return &resp.Dashboards[i], nil
+		}
+	}
+	return nil, &NotFoundError{Message: fmt.Sprintf("dashboard with id %q not found", id)}
+}
+
 func paginateList[T any](
 	ctx context.Context,
 	c *Client,
