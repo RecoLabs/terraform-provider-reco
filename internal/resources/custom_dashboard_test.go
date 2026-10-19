@@ -71,7 +71,7 @@ func testAccDashboardConfig(name, visibility string) string {
 resource "reco_custom_dashboard" "test" {
   name       = %q
   visibility = %q
-  spec       = jsonencode({})
+  spec       = jsonencode({ sections = [] })
 }
 `, name, visibility)
 }

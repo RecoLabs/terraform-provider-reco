@@ -61,84 +61,113 @@ func (f *fakeCustomAPI) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/external-api")
-	reply := func(v any) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(v)
-	}
-	fail := func(code int, msg string) { http.Error(w, msg, code) }
 
+	var resp any
+	status := http.StatusOK
 	switch {
 	case r.Method == http.MethodPost && path == "/compliance-frameworks/create":
-		var req client.CreateComplianceFrameworkRequest
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		f.seq++
-		id := fmt.Sprintf("fw-%d", f.seq)
-		d := req.Definition
-		f.frameworks[id] = client.ComplianceFramework{ID: id, Title: d.Title, Description: d.Description, Version: d.Version, Type: d.Type, IsCustom: true, IsActive: d.IsActive}
-		reply(client.CreateComplianceFrameworkResponse{ID: id})
+		resp = f.createFramework(r)
 	case r.Method == http.MethodPut && path == "/compliance-frameworks/upsert":
-		var req client.UpsertComplianceFrameworkRequest
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		fw, ok := f.frameworks[req.Framework.ID]
-		if !ok {
-			fail(http.StatusNotFound, "framework not found")
-			return
-		}
-		fw.Title, fw.Description, fw.Version, fw.Type = req.Framework.Title, req.Framework.Description, req.Framework.Version, req.Framework.Type
-		f.frameworks[fw.ID] = fw // IsActive intentionally untouched
-		f.controls[fw.ID] = req.Controls
-		reply(struct{}{})
+		resp, status = f.upsertFramework(r)
 	case r.Method == http.MethodGet && path == "/compliance-frameworks/list":
-		out := []client.ComplianceFramework{}
-		for _, fw := range f.frameworks {
-			if strings.Contains(r.URL.Query().Get("filters"), `"`+fw.ID+`"`) {
-				out = append(out, fw)
-			}
-		}
-		reply(map[string]any{"totalResults": fmt.Sprint(len(out)), "itemsPerPage": fmt.Sprint(len(out)), "complianceFrameworks": out})
+		resp = f.listFrameworks(r)
 	case r.Method == http.MethodDelete && strings.HasPrefix(path, "/compliance-frameworks/"):
-		id := strings.TrimPrefix(path, "/compliance-frameworks/")
-		if _, ok := f.frameworks[id]; !ok {
-			fail(http.StatusNotFound, "framework not found")
-			return
-		}
-		delete(f.frameworks, id)
-		delete(f.controls, id)
-		reply(struct{}{})
+		resp, status = f.deleteFramework(strings.TrimPrefix(path, "/compliance-frameworks/"))
 	case r.Method == http.MethodPost && path == "/dashboards/save":
-		var req client.SaveDashboardRequest
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		d, exists := f.dashboards[req.ID]
+		resp = f.saveDashboard(r)
+	case r.Method == http.MethodGet && path == "/dashboards/list":
+		resp = f.listDashboards(r)
+	default:
+		resp, status = "unknown endpoint "+r.Method+" "+path, http.StatusNotFound
+	}
+
+	if status != http.StatusOK {
+		http.Error(w, fmt.Sprint(resp), status)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (f *fakeCustomAPI) createFramework(r *http.Request) any {
+	var req client.CreateComplianceFrameworkRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	f.seq++
+	id := fmt.Sprintf("fw-%d", f.seq)
+	d := req.Definition
+	f.frameworks[id] = client.ComplianceFramework{
+		ID: id, Title: d.Title, Description: d.Description, Version: d.Version, Type: d.Type,
+		IsCustom: true, IsActive: d.IsActive,
+	}
+	return client.CreateComplianceFrameworkResponse{ID: id}
+}
+
+func (f *fakeCustomAPI) upsertFramework(r *http.Request) (any, int) {
+	var req client.UpsertComplianceFrameworkRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	fw, ok := f.frameworks[req.Framework.ID]
+	if !ok {
+		return "framework not found", http.StatusNotFound
+	}
+	in := req.Framework
+	fw.Title, fw.Description, fw.Version, fw.Type = in.Title, in.Description, in.Version, in.Type
+	f.frameworks[fw.ID] = fw // IsActive intentionally untouched
+	f.controls[fw.ID] = req.Controls
+	return struct{}{}, http.StatusOK
+}
+
+func (f *fakeCustomAPI) listFrameworks(r *http.Request) any {
+	out := []client.ComplianceFramework{}
+	for _, fw := range f.frameworks {
+		if strings.Contains(r.URL.Query().Get("filters"), `"`+fw.ID+`"`) {
+			out = append(out, fw)
+		}
+	}
+	return map[string]any{"totalResults": fmt.Sprint(len(out)), "itemsPerPage": fmt.Sprint(len(out)), "complianceFrameworks": out}
+}
+
+func (f *fakeCustomAPI) deleteFramework(id string) (any, int) {
+	if _, ok := f.frameworks[id]; !ok {
+		return "framework not found", http.StatusNotFound
+	}
+	delete(f.frameworks, id)
+	delete(f.controls, id)
+	return struct{}{}, http.StatusOK
+}
+
+func (f *fakeCustomAPI) saveDashboard(r *http.Request) any {
+	var req client.SaveDashboardRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	d, exists := f.dashboards[req.ID]
+	if !exists {
 		if req.ID == "" {
 			f.seq++
 			req.ID = fmt.Sprintf("dash-%d", f.seq)
-			d = client.Dashboard{ID: req.ID, Visibility: "DASHBOARD_VISIBILITY_PRIVATE", FolderPath: "/", CreatedBy: "tf@example.com"}
-		} else if !exists {
-			d = client.Dashboard{ID: req.ID, Visibility: "DASHBOARD_VISIBILITY_PRIVATE", FolderPath: "/", CreatedBy: "tf@example.com"}
 		}
-		created := "2026-01-01T00:00:00Z"
-		d.Name = req.Name
-		d.Spec = reserialize(req.Spec)
-		d.CreatedAt = &created
-		if req.Visibility != "" {
-			d.Visibility = req.Visibility
-		}
-		if req.FolderPath != "" {
-			d.FolderPath = req.FolderPath
-		}
-		f.dashboards[d.ID] = d
-		reply(client.SaveDashboardResponse{Dashboard: d})
-	case r.Method == http.MethodGet && path == "/dashboards/list":
-		out := []client.Dashboard{}
-		for _, id := range r.URL.Query()["ids"] {
-			if d, ok := f.dashboards[id]; ok {
-				out = append(out, d)
-			}
-		}
-		reply(map[string]any{"dashboards": out})
-	default:
-		fail(http.StatusNotFound, "unknown endpoint "+r.Method+" "+path)
+		d = client.Dashboard{ID: req.ID, Visibility: "DASHBOARD_VISIBILITY_PRIVATE", FolderPath: "/", CreatedBy: "tf@example.com"}
 	}
+	created := "2026-01-01T00:00:00Z"
+	d.Name = req.Name
+	d.Spec = reserialize(req.Spec)
+	d.CreatedAt = &created
+	if req.Visibility != "" {
+		d.Visibility = req.Visibility
+	}
+	if req.FolderPath != "" {
+		d.FolderPath = req.FolderPath
+	}
+	f.dashboards[d.ID] = d
+	return client.SaveDashboardResponse{Dashboard: d}
+}
+
+func (f *fakeCustomAPI) listDashboards(r *http.Request) any {
+	out := []client.Dashboard{}
+	for _, id := range r.URL.Query()["ids"] {
+		if d, ok := f.dashboards[id]; ok {
+			out = append(out, d)
+		}
+	}
+	return map[string]any{"dashboards": out}
 }
 
 // reserialize mimics a server that stores spec in its own canonical, indented form.
@@ -269,7 +298,7 @@ func TestCustomDashboard_lifecycle(t *testing.T) {
 resource "reco_custom_dashboard" "test" {
   name       = %q
   visibility = %q
-  spec       = jsonencode({ widgets = ["DASHBOARD_WIDGET_TOTAL_SAAS_APPS"], columns = 2 })
+  spec       = jsonencode({ sections = [{ columns = 2, cells = [{ widgets = [{ widget = "DASHBOARD_WIDGET_TOTAL_SAAS_APPS" }] }] }] })
 }
 `, name, visibility)
 	}

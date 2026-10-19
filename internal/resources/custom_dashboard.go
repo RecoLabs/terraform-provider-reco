@@ -65,8 +65,11 @@ func (r *customDashboardResource) Schema(_ context.Context, _ resource.SchemaReq
 				Validators:  []validator.String{stringvalidator.LengthBetween(1, 200)},
 			},
 			"spec": schema.StringAttribute{
-				Description: "Dashboard layout as a JSON string, for example from jsonencode(). " +
-					"Valid widget keys are listed by the Reco API endpoint GET /api/v1/external-api/dashboards/widgets.",
+				Description: "Dashboard layout as a JSON object string, for example from jsonencode(). It must contain a " +
+					"`sections` array whose entries hold a `cells` array of `widgets` (`{\"widget\": \"<key>\"}`); valid widget keys are " +
+					"listed by the Reco API endpoint GET /api/v1/external-api/dashboards/widgets. Reco rewrites SCIM filter " +
+					"shorthand (`{\"scim\": \"...\"}`) into structured filters when saving, so use structured filters to avoid a " +
+					"permanent diff.",
 				Required:   true,
 				Validators: []validator.String{validJSON{}},
 			},
@@ -182,7 +185,7 @@ func (r *customDashboardResource) Update(ctx context.Context, req resource.Updat
 }
 
 // Delete only forgets the dashboard: the external API has no delete endpoint.
-func (r *customDashboardResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (*customDashboardResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state customDashboardResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
