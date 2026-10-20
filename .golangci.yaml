@@ -68,12 +68,12 @@ linters:
       # Match by package path, not by the import alias written in the source.
       analyze-types: true
       forbid:
-      # redis-runtime-context holds every tenant's entity blobs. Only the two wiring
+      # redis-runtime-context holds every tenant's entity blobs. Only the three wiring
       # points may open it, so all access goes through the tenant-scoped lookup and
       # sink code (keys from contextmapping.KeysFromContext, blobs read via decodeBlob).
       - pattern: (^|\.)RedisDB_REDIS_DB_RUNTIME_CONTEXT$
         pkg: ^github\.com/recolabs/reco/reco-proto/gen/go/data/redis/v1$
-        msg: open redis-runtime-context only in the runtime-policy-service or kafka-dbs-sink-daemon main.go
+        msg: open redis-runtime-context only in the runtime-policy-service, kafka-dbs-sink-daemon or prompt-label-daemon main.go
     funlen:
       lines: 100
       statements: 50
@@ -136,7 +136,7 @@ linters:
       text: G117
     - path: (.+)\.go$
       text: Error return value of `.*log.*ger.*\.Log` is not checked
-    - path: ^(cmd/(runtime_policy_service|kafka_dbs_sink_daemon)/main|redis-context/redis-context)\.go$
+    - path: ^(cmd/(runtime_policy_service|kafka_dbs_sink_daemon|prompt_label_daemon)/main|redis-context/redis-context)\.go$
       linters:
       - forbidigo
       text: redis-runtime-context

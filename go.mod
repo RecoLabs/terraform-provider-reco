@@ -1,6 +1,6 @@
 module github.com/recolabs/terraform-provider-reco
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
@@ -65,7 +65,7 @@ require (
 	github.com/posener/complete v1.2.3 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
+	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/vmihailenco/msgpack v4.0.4+incompatible // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
