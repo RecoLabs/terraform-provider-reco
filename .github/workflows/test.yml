@@ -31,7 +31,7 @@ jobs:
     - name: Lint
       uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9.3.0
       with:
-        version: v2.13.2
+        version: v2.15.0
 
     # Offline: the resources and data sources run against the in-memory fake API in internal/fakereco.
     - name: Unit tests and coverage gate
@@ -104,5 +104,5 @@ jobs:
       run: make testacc ACC_TIMEOUT=35m
 
     - name: Remove objects leaked by this run
-      if: always()
+      if: always() && env.RECO_API_KEY != '' && env.RECO_BASE_URL != ''
       run: make sweep
