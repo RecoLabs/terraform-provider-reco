@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/recolabs/terraform-provider-reco/internal/acctestutil"
 	"github.com/recolabs/terraform-provider-reco/internal/client"
 )
 
@@ -17,8 +18,8 @@ func TestAccApiKey_basic(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	name := fmt.Sprintf("tf-acc-key-%d", ts)
+	ts := acctestutil.Suffix()
+	name := fmt.Sprintf("tf-acc-key-%s", ts)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),
@@ -69,4 +70,27 @@ func checkApiKeyDestroyed(name string) resource.TestCheckFunc {
 		}
 		return nil
 	}
+}
+
+func TestAccApiKey_import(t *testing.T) {
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("TF_ACC not set; skipping acceptance test")
+	}
+	testAccPreCheck(t)
+
+	name := fmt.Sprintf("tf-acc-key-imp-%s", acctestutil.Suffix())
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: providerFactories(),
+		CheckDestroy:             checkApiKeyDestroyed(name),
+		Steps: []resource.TestStep{
+			{Config: testAccApiKeyConfig(name)},
+			{
+				ResourceName:            "reco_api_key.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"secret"}, // the API only returns the secret on creation
+			},
+		},
+	})
 }

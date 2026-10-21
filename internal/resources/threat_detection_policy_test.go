@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/recolabs/terraform-provider-reco/internal/acctestutil"
 	"github.com/recolabs/terraform-provider-reco/internal/client"
 )
 
@@ -17,8 +18,8 @@ func TestAccThreatDetectionPolicy_basic(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	title := fmt.Sprintf("TF Acc ITDR Policy %d", ts)
+	ts := acctestutil.Suffix()
+	title := fmt.Sprintf("tf-acc-itdr-policy-%s", ts)
 	renamed := title + " Renamed"
 
 	resource.Test(t, resource.TestCase{
@@ -49,8 +50,8 @@ func TestAccThreatDetectionPolicy_import(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	title := fmt.Sprintf("TF Acc ITDR Import %d", ts)
+	ts := acctestutil.Suffix()
+	title := fmt.Sprintf("tf-acc-itdr-import-%s", ts)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),

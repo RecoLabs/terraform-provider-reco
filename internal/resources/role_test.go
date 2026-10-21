@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/recolabs/terraform-provider-reco/internal/acctestutil"
 	"github.com/recolabs/terraform-provider-reco/internal/client"
 )
 
@@ -17,7 +18,7 @@ func TestAccRecoRole_basic(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	name := fmt.Sprintf("tf-acc-role-%d", testTimestamp())
+	name := fmt.Sprintf("tf-acc-role-%s", acctestutil.Suffix())
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),
@@ -40,7 +41,7 @@ func TestAccRecoRole_update(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	name := fmt.Sprintf("tf-acc-role-upd-%d", testTimestamp())
+	name := fmt.Sprintf("tf-acc-role-upd-%s", acctestutil.Suffix())
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),
@@ -64,7 +65,7 @@ func TestAccRecoRole_import(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	name := fmt.Sprintf("tf-acc-role-imp-%d", testTimestamp())
+	name := fmt.Sprintf("tf-acc-role-imp-%s", acctestutil.Suffix())
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),
@@ -104,5 +105,5 @@ resource "reco_role" "test" {
   description = %q
   permissions = [%q]
 }
-`, name, description, testAccPermission())
+`, name, description, acctestutil.Permission())
 }

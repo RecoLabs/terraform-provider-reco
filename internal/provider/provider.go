@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -88,7 +90,7 @@ func (p *recoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 			"Missing Base URL",
 			"Set the base_url provider attribute or the RECO_BASE_URL environment variable.",
 		)
-	} else if !strings.HasPrefix(baseURL, "https://") {
+	} else if !isSecureBaseURL(baseURL) {
 		resp.Diagnostics.AddError(
 			"Insecure Base URL",
 			"base_url must use the https:// scheme to protect the API key in transit.",
@@ -107,6 +109,24 @@ func (p *recoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 	}
 	resp.DataSourceData = c
 	resp.ResourceData = c
+}
+
+// isSecureBaseURL reports whether the API key may be sent to baseURL: https, or plain http to a
+// loopback host, which never leaves the machine and lets tests run against a local fake API.
+func isSecureBaseURL(baseURL string) bool {
+	if strings.HasPrefix(baseURL, "https://") {
+		return true
+	}
+	u, err := url.Parse(baseURL)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (p *recoProvider) Resources(_ context.Context) []func() resource.Resource {

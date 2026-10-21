@@ -6,12 +6,12 @@ import (
 	"os"
 	"regexp"
 	"testing"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/recolabs/terraform-provider-reco/internal/acctestutil"
 	"github.com/recolabs/terraform-provider-reco/internal/client"
 	"github.com/recolabs/terraform-provider-reco/internal/provider"
 )
@@ -32,13 +32,6 @@ func testAccPreCheck(t *testing.T) {
 	}
 }
 
-func testAccPermission() string {
-	if p := os.Getenv("RECO_TEST_PERMISSION"); p != "" {
-		return p
-	}
-	return "PERM_ALERTS_READ"
-}
-
 func testAccProviderConfig() string {
 	return `
 provider "reco" {}
@@ -51,9 +44,9 @@ func TestAccRecoUser_basic(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	email := fmt.Sprintf("tf-acc-test-%d@reco-test.example.com", ts)
-	roleName := fmt.Sprintf("tf-acc-user-role-%d", ts)
+	ts := acctestutil.Suffix()
+	email := fmt.Sprintf("tf-acc-test-%s@reco-test.example.com", ts)
+	roleName := fmt.Sprintf("tf-acc-user-role-%s", ts)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),
@@ -80,9 +73,9 @@ func TestAccRecoUser_update(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	email := fmt.Sprintf("tf-acc-update-%d@reco-test.example.com", ts)
-	roleName := fmt.Sprintf("tf-acc-user-role-%d", ts)
+	ts := acctestutil.Suffix()
+	email := fmt.Sprintf("tf-acc-update-%s@reco-test.example.com", ts)
+	roleName := fmt.Sprintf("tf-acc-user-role-%s", ts)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),
@@ -109,9 +102,9 @@ func TestAccRecoUser_import(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	email := fmt.Sprintf("tf-acc-import-%d@reco-test.example.com", ts)
-	roleName := fmt.Sprintf("tf-acc-user-role-%d", ts)
+	ts := acctestutil.Suffix()
+	email := fmt.Sprintf("tf-acc-import-%s@reco-test.example.com", ts)
+	roleName := fmt.Sprintf("tf-acc-user-role-%s", ts)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),
@@ -163,9 +156,9 @@ func TestAccRecoUser_import_by_id(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	email := fmt.Sprintf("tf-acc-imp-id-%d@reco-test.example.com", ts)
-	roleName := fmt.Sprintf("tf-acc-user-role-%d", ts)
+	ts := acctestutil.Suffix()
+	email := fmt.Sprintf("tf-acc-imp-id-%s@reco-test.example.com", ts)
+	roleName := fmt.Sprintf("tf-acc-user-role-%s", ts)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),
@@ -207,7 +200,7 @@ resource "reco_user" "test" {
   user_roles    = [reco_role.acc_role.name]
   depends_on    = [reco_role.acc_role]
 }
-`, roleName, testAccPermission(), email, name)
+`, roleName, acctestutil.Permission(), email, name)
 }
 
 func checkUserDestroyed(email string) resource.TestCheckFunc {
@@ -222,8 +215,4 @@ func checkUserDestroyed(email string) resource.TestCheckFunc {
 		}
 		return fmt.Errorf("user %q still exists after destroy", email)
 	}
-}
-
-func testTimestamp() int64 {
-	return time.Now().Unix()
 }
