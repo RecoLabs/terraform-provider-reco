@@ -122,16 +122,7 @@ func dataSourceCases() []dataSourceCase {
 }
 
 func (c *dataSourceCase) config(srv *fakereco.Server) string {
-	return unitProviderConfig(srv) + fmt.Sprintf("\ndata %q \"all\" {}\n", c.typeName)
-}
-
-func unitProviderConfig(srv *fakereco.Server) string {
-	return fmt.Sprintf(`
-provider "reco" {
-  api_key  = %q
-  base_url = %q
-}
-`, fakereco.APIKey, srv.URL)
+	return srv.ProviderConfig() + fmt.Sprintf("\ndata %q \"all\" {}\n", c.typeName)
 }
 
 func unitTest(t *testing.T, steps ...resource.TestStep) {
@@ -195,7 +186,7 @@ func TestDataSources_apiErrorIsReported(t *testing.T) {
 func TestDataSources_seeCreatedResourcesImmediately(t *testing.T) {
 	srv := fakereco.New(t)
 	srv.SeedUser(client.RecoUser{EmailAddress: "first@example.com", Name: "First"})
-	cfg := unitProviderConfig(srv) + `data "reco_users" "all" {}
+	cfg := srv.ProviderConfig() + `data "reco_users" "all" {}
 `
 	unitTest(t,
 		resource.TestStep{Config: cfg, Check: resource.TestCheckResourceAttr("data.reco_users.all", "users.#", "1")},

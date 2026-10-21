@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/recolabs/terraform-provider-reco/internal/acctestutil"
 	"github.com/recolabs/terraform-provider-reco/internal/client"
 )
 
@@ -17,7 +18,7 @@ func TestAccThreatDetectionPolicy_basic(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testAccSuffix()
+	ts := acctestutil.Suffix()
 	title := fmt.Sprintf("tf-acc-itdr-policy-%s", ts)
 	renamed := title + " Renamed"
 
@@ -49,7 +50,7 @@ func TestAccThreatDetectionPolicy_import(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testAccSuffix()
+	ts := acctestutil.Suffix()
 	title := fmt.Sprintf("tf-acc-itdr-import-%s", ts)
 
 	resource.Test(t, resource.TestCase{

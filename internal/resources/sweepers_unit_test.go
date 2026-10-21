@@ -2,8 +2,10 @@ package resources_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/recolabs/terraform-provider-reco/internal/acctestutil"
 	"github.com/recolabs/terraform-provider-reco/internal/client"
 	"github.com/recolabs/terraform-provider-reco/internal/fakereco"
 )
@@ -14,9 +16,9 @@ func TestSweepers_deleteOnlyAcceptanceTestObjects(t *testing.T) {
 	c := client.New(srv.URL, fakereco.APIKey, "test")
 	ctx := context.Background()
 
-	srv.SeedUser(client.RecoUser{EmailAddress: "tf-acc-a" + testAccEmailDomain})
+	srv.SeedUser(client.RecoUser{EmailAddress: "tf-acc-a" + acctestutil.EmailDomain})
 	srv.SeedUser(client.RecoUser{EmailAddress: "tf-acc-b@example.com"}) // right prefix, wrong domain
-	srv.SeedUser(client.RecoUser{EmailAddress: "alice" + testAccEmailDomain})
+	srv.SeedUser(client.RecoUser{EmailAddress: "alice" + acctestutil.EmailDomain})
 	srv.SeedUser(client.RecoUser{EmailAddress: "alice@acme.com"})
 
 	srv.SeedRole(client.RecoRole{Name: "tf-acc-role"})
@@ -64,11 +66,31 @@ func TestSweepers_deleteOnlyAcceptanceTestObjects(t *testing.T) {
 		policies = append(policies, p.Name)
 	}
 
-	assertSet(t, "users", users, "tf-acc-b@example.com", "alice"+testAccEmailDomain, "alice@acme.com")
+	assertSet(t, "users", users, "tf-acc-b@example.com", "alice"+acctestutil.EmailDomain, "alice@acme.com")
 	assertSet(t, "roles", roles, "ROLE_SECURITY_VIEWER", "ROLE_ADMIN", "prod-role", "TF-ACC-upper", "tf-acc-system")
 	assertSet(t, "api keys", keys, "ci-deploy-key", "my-tf-acc-key")
 	assertSet(t, "posture checks", checks, "Real posture check")
 	assertSet(t, "policies", policies, "Real ITDR policy")
+}
+
+func TestSweepers_continuePastFailedDeletes(t *testing.T) {
+	srv := fakereco.New(t)
+	c := client.New(srv.URL, fakereco.APIKey, "test")
+	for _, name := range []string{"tf-acc-1", "tf-acc-2", "tf-acc-3"} {
+		srv.SeedAPIKey(client.ApiKey{Name: name})
+	}
+	srv.FailWith("DELETE", "/api-keys/key-1", 403, "forbidden") // the first key cannot be deleted
+
+	err := sweepAPIKeys(context.Background(), c)
+	if err == nil || !strings.Contains(err.Error(), `"tf-acc-1"`) {
+		t.Fatalf("want an error naming the key that could not be deleted, got %v", err)
+	}
+	keys := srv.APIKeys()
+	left := make([]string, 0, len(keys))
+	for _, k := range keys {
+		left = append(left, k.Name)
+	}
+	assertSet(t, "api keys", left, "tf-acc-1")
 }
 
 func assertSet(t *testing.T, what string, got []string, want ...string) {

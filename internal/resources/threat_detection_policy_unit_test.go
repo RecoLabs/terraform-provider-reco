@@ -12,7 +12,7 @@ import (
 )
 
 func unitPolicyConfig(srv *fakereco.Server, title, level, status string) string {
-	return unitProviderConfig(srv) + fmt.Sprintf(`
+	return srv.ProviderConfig() + fmt.Sprintf(`
 resource "reco_threat_detection_policy" "test" {
   title                = %q
   description          = "unit test policy"

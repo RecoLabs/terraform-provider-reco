@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/recolabs/terraform-provider-reco/internal/acctestutil"
 	"github.com/recolabs/terraform-provider-reco/internal/client"
 )
 
@@ -17,7 +18,7 @@ func TestAccApiKey_basic(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testAccSuffix()
+	ts := acctestutil.Suffix()
 	name := fmt.Sprintf("tf-acc-key-%s", ts)
 
 	resource.Test(t, resource.TestCase{
@@ -77,7 +78,7 @@ func TestAccApiKey_import(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	name := fmt.Sprintf("tf-acc-key-imp-%s", testAccSuffix())
+	name := fmt.Sprintf("tf-acc-key-imp-%s", acctestutil.Suffix())
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),

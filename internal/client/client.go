@@ -19,9 +19,13 @@ const (
 	defaultTimeout = 30 * time.Second
 
 	// MaxAttempts is how many times a request is tried before giving up on a retryable failure
-	// (429, or 5xx for requests that are safe to repeat). With the default backoff that is a bit
-	// over a minute of waiting, enough to ride out a per-minute rate-limit window.
+	// (429, or 5xx for requests that are safe to repeat). With the default backoff the waits add up
+	// to at least 63s, enough to ride out a per-minute rate-limit window.
 	MaxAttempts = 7
+
+	// defaultRetryBudget caps the wall-clock time one request may spend, retries included, so a
+	// throttled `terraform plan` fails in a couple of minutes instead of appearing to hang.
+	defaultRetryBudget = 2 * time.Minute
 
 	maxBackoff    = 32 * time.Second
 	maxRetryAfter = 2 * time.Minute
@@ -32,6 +36,8 @@ type Client struct {
 	pageSize   int64
 	httpClient *http.Client
 	backoff    func(attempt int) time.Duration
+
+	retryBudget time.Duration
 }
 
 // Option customizes a Client created by New.
@@ -43,11 +49,18 @@ func WithRetryBackoff(fn func(attempt int) time.Duration) Option {
 	return func(c *Client) { c.backoff = fn }
 }
 
-// defaultBackoff waits 1s, 2s, 4s, ... capped at maxBackoff, minus up to half as jitter so several
-// clients that were throttled together do not retry in lockstep.
+// WithRetryBudget overrides the total wall-clock time a single request may spend, retries included.
+// A retry whose wait would end past the budget is not attempted; the last error is returned instead.
+func WithRetryBudget(d time.Duration) Option {
+	return func(c *Client) { c.retryBudget = d }
+}
+
+// defaultBackoff waits 1s, 2s, 4s, ... capped at maxBackoff, plus up to half again as jitter so
+// several clients that were throttled together do not retry in lockstep. The jitter is added on top
+// so the waits never add up to less than the documented window.
 func defaultBackoff(attempt int) time.Duration {
 	d := min(time.Duration(1)<<max(attempt-1, 0)*time.Second, maxBackoff)
-	return d - rand.N(d/2+1)
+	return d + rand.N(d/2+1)
 }
 
 // retryAfter reads the Retry-After header (delta-seconds or an HTTP date); 0 means absent or unusable.
@@ -89,7 +102,8 @@ func New(baseURL, apiKey, version string, opts ...Option) *Client {
 			Timeout:   defaultTimeout,
 			Transport: transport,
 		},
-		backoff: defaultBackoff,
+		backoff:     defaultBackoff,
+		retryBudget: defaultRetryBudget,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -117,6 +131,24 @@ func (c *Client) apiURL(path string) string {
 	return c.baseURL + "/api/v1/external-api" + path
 }
 
+// waitToRetry sleeps before retry number attempt, using the server's Retry-After hint when there is
+// one. It fails instead of sleeping when the wait would end past the retry deadline.
+func (c *Client) waitToRetry(ctx context.Context, attempt int, serverHint time.Duration, deadline time.Time, lastErr error) error {
+	wait := c.backoff(attempt)
+	if serverHint > 0 {
+		wait = serverHint
+	}
+	if time.Now().Add(wait).After(deadline) {
+		return fmt.Errorf("after %d attempts (retry time limit of %s reached): %w", attempt, c.retryBudget, lastErr)
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(wait):
+		return nil
+	}
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
 	var bodyBytes []byte
 	if body != nil {
@@ -129,18 +161,13 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 
 	var lastErr error
 	var serverHint time.Duration // Retry-After from the previous attempt, if the server sent one
+	deadline := time.Now().Add(c.retryBudget)
 	for attempt := range MaxAttempts {
 		if attempt > 0 {
-			wait := c.backoff(attempt)
-			if serverHint > 0 {
-				wait = serverHint
+			if err := c.waitToRetry(ctx, attempt, serverHint, deadline, lastErr); err != nil {
+				return err
 			}
 			serverHint = 0
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(wait):
-			}
 		}
 
 		var reqBody io.Reader

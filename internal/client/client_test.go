@@ -74,17 +74,24 @@ func TestDefaultBackoff(t *testing.T) {
 		ceiling := min(time.Duration(1)<<(attempt-1)*time.Second, maxBackoff)
 		for range 50 {
 			got := defaultBackoff(attempt)
-			if got > ceiling || got < ceiling/2 {
-				t.Fatalf("defaultBackoff(%d) = %v, want within [%v, %v]", attempt, got, ceiling/2, ceiling)
+			if got < ceiling || got > ceiling+ceiling/2 {
+				t.Fatalf("defaultBackoff(%d) = %v, want within [%v, %v]", attempt, got, ceiling, ceiling+ceiling/2)
 			}
 		}
 	}
-	if total := func() (sum time.Duration) {
-		for a := 1; a < MaxAttempts; a++ {
-			sum += min(time.Duration(1)<<(a-1)*time.Second, maxBackoff)
-		}
-		return sum
-	}(); total < 45*time.Second {
-		t.Errorf("worst-case total wait %v is too short to outlast a rate-limit window", total)
+
+	// Even with no jitter at all the waits must cover a per-minute rate-limit window, and even with
+	// maximum jitter they must fit the retry budget.
+	var shortest, longest time.Duration
+	for a := 1; a < MaxAttempts; a++ {
+		base := min(time.Duration(1)<<(a-1)*time.Second, maxBackoff)
+		shortest += base
+		longest += base + base/2
+	}
+	if shortest < time.Minute {
+		t.Errorf("shortest total wait %v does not outlast a one-minute rate-limit window", shortest)
+	}
+	if longest > defaultRetryBudget {
+		t.Errorf("longest total wait %v exceeds the %v retry budget", longest, defaultRetryBudget)
 	}
 }

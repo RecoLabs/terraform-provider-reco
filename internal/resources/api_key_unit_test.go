@@ -12,7 +12,7 @@ import (
 )
 
 func unitAPIKeyConfig(srv *fakereco.Server, name, role, extra string) string {
-	return unitProviderConfig(srv) + fmt.Sprintf(`
+	return srv.ProviderConfig() + fmt.Sprintf(`
 resource "reco_api_key" "test" {
   name = %q
   role = %q

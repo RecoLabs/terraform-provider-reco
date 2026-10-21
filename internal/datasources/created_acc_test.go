@@ -6,25 +6,10 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/recolabs/terraform-provider-reco/internal/acctestutil"
 )
-
-// testAccPrefix marks every object the acceptance tests create; the sweepers in internal/resources
-// delete only objects carrying it.
-const testAccPrefix = "tf-acc-"
-
-func testAccSuffix() string {
-	return acctest.RandStringFromCharSet(8, acctest.CharSetAlphaNum)
-}
-
-func testAccPermission() string {
-	if p := os.Getenv("RECO_TEST_PERMISSION"); p != "" {
-		return p
-	}
-	return "PERM_ALERTS_READ"
-}
 
 // testCheckListContains passes when some element of the list attribute has attr == want.
 func testCheckListContains(addr, listAttr, attr, want string) resource.TestCheckFunc {
@@ -60,18 +45,18 @@ func createdCases() []createdCase {
 	return []createdCase{
 		{
 			name: "roles", dep: "reco_role.test", dsType: "reco_roles", listAttr: "roles", nameAttr: "name",
-			ident: func(s string) string { return testAccPrefix + "ds-role-" + s },
+			ident: func(s string) string { return acctestutil.Prefix + "ds-role-" + s },
 			object: func(name string) string {
 				return fmt.Sprintf(`resource "reco_role" "test" {
   name        = %q
   description = "data source acceptance test"
   permissions = [%q]
-}`, name, testAccPermission())
+}`, name, acctestutil.Permission())
 			},
 		},
 		{
 			name: "api_keys", dep: "reco_api_key.test", dsType: "reco_api_keys", listAttr: "api_keys", nameAttr: "name",
-			ident: func(s string) string { return testAccPrefix + "ds-key-" + s },
+			ident: func(s string) string { return acctestutil.Prefix + "ds-key-" + s },
 			object: func(name string) string {
 				return fmt.Sprintf(`resource "reco_api_key" "test" {
   name = %q
@@ -81,7 +66,7 @@ func createdCases() []createdCase {
 		},
 		{
 			name: "users", dep: "reco_user.test", dsType: "reco_users", listAttr: "users", nameAttr: "email_address",
-			ident: func(s string) string { return testAccPrefix + "ds-user-" + s + "@reco-test.example.com" },
+			ident: func(s string) string { return acctestutil.Prefix + "ds-user-" + s + "@reco-test.example.com" },
 			object: func(email string) string {
 				return fmt.Sprintf(`resource "reco_role" "acc_role" {
   name        = %q
@@ -92,12 +77,12 @@ resource "reco_user" "test" {
   email_address = %q
   name          = "Data source test"
   user_roles    = [reco_role.acc_role.name]
-}`, testAccPrefix+"ds-user-role-"+testAccSuffix(), testAccPermission(), email)
+}`, acctestutil.Prefix+"ds-user-role-"+acctestutil.Suffix(), acctestutil.Permission(), email)
 			},
 		},
 		{
 			name: "posture_checks", dep: "reco_posture_check.test", dsType: "reco_posture_checks", listAttr: "posture_checks", nameAttr: "name",
-			ident: func(s string) string { return testAccPrefix + "ds-posture-" + s },
+			ident: func(s string) string { return acctestutil.Prefix + "ds-posture-" + s },
 			object: func(title string) string {
 				return fmt.Sprintf(`resource "reco_posture_check" "test" {
   title                  = %q
@@ -113,7 +98,7 @@ resource "reco_user" "test" {
 		},
 		{
 			name: "policies", dep: "reco_threat_detection_policy.test", dsType: "reco_policies", listAttr: "policies", nameAttr: "name",
-			ident: func(s string) string { return testAccPrefix + "ds-policy-" + s },
+			ident: func(s string) string { return acctestutil.Prefix + "ds-policy-" + s },
 			object: func(title string) string {
 				return fmt.Sprintf(`resource "reco_threat_detection_policy" "test" {
   title                = %q
@@ -140,7 +125,7 @@ func TestAccDataSources_listCreatedObjects(t *testing.T) {
 
 	for _, tc := range createdCases() {
 		t.Run(tc.name, func(t *testing.T) {
-			ident := tc.ident(testAccSuffix())
+			ident := tc.ident(acctestutil.Suffix())
 			resource.Test(t, resource.TestCase{
 				ProtoV6ProviderFactories: providerFactoriesDS(),
 				Steps: []resource.TestStep{{

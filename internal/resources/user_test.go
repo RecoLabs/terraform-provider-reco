@@ -9,9 +9,9 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
-	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/recolabs/terraform-provider-reco/internal/acctestutil"
 	"github.com/recolabs/terraform-provider-reco/internal/client"
 	"github.com/recolabs/terraform-provider-reco/internal/provider"
 )
@@ -32,13 +32,6 @@ func testAccPreCheck(t *testing.T) {
 	}
 }
 
-func testAccPermission() string {
-	if p := os.Getenv("RECO_TEST_PERMISSION"); p != "" {
-		return p
-	}
-	return "PERM_ALERTS_READ"
-}
-
 func testAccProviderConfig() string {
 	return `
 provider "reco" {}
@@ -51,7 +44,7 @@ func TestAccRecoUser_basic(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testAccSuffix()
+	ts := acctestutil.Suffix()
 	email := fmt.Sprintf("tf-acc-test-%s@reco-test.example.com", ts)
 	roleName := fmt.Sprintf("tf-acc-user-role-%s", ts)
 
@@ -80,7 +73,7 @@ func TestAccRecoUser_update(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testAccSuffix()
+	ts := acctestutil.Suffix()
 	email := fmt.Sprintf("tf-acc-update-%s@reco-test.example.com", ts)
 	roleName := fmt.Sprintf("tf-acc-user-role-%s", ts)
 
@@ -109,7 +102,7 @@ func TestAccRecoUser_import(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testAccSuffix()
+	ts := acctestutil.Suffix()
 	email := fmt.Sprintf("tf-acc-import-%s@reco-test.example.com", ts)
 	roleName := fmt.Sprintf("tf-acc-user-role-%s", ts)
 
@@ -163,7 +156,7 @@ func TestAccRecoUser_import_by_id(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testAccSuffix()
+	ts := acctestutil.Suffix()
 	email := fmt.Sprintf("tf-acc-imp-id-%s@reco-test.example.com", ts)
 	roleName := fmt.Sprintf("tf-acc-user-role-%s", ts)
 
@@ -207,7 +200,7 @@ resource "reco_user" "test" {
   user_roles    = [reco_role.acc_role.name]
   depends_on    = [reco_role.acc_role]
 }
-`, roleName, testAccPermission(), email, name)
+`, roleName, acctestutil.Permission(), email, name)
 }
 
 func checkUserDestroyed(email string) resource.TestCheckFunc {
@@ -222,13 +215,4 @@ func checkUserDestroyed(email string) resource.TestCheckFunc {
 		}
 		return fmt.Errorf("user %q still exists after destroy", email)
 	}
-}
-
-// testAccPrefix marks every object the acceptance tests create. The sweepers delete only objects
-// carrying it, so never create test objects without it.
-const testAccPrefix = "tf-acc-"
-
-// testAccSuffix returns a random suffix so concurrent runs against the same tenant never collide.
-func testAccSuffix() string {
-	return acctest.RandStringFromCharSet(8, acctest.CharSetAlphaNum)
 }

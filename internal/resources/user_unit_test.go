@@ -13,7 +13,7 @@ import (
 )
 
 func unitUserConfig(srv *fakereco.Server, email, name, extra string) string {
-	return unitProviderConfig(srv) + fmt.Sprintf(`
+	return srv.ProviderConfig() + fmt.Sprintf(`
 resource "reco_user" "test" {
   email_address = %q
   name          = %q
@@ -157,7 +157,7 @@ func TestUser_expiration(t *testing.T) {
 func TestUser_emptyRolesRejectedAtPlanTime(t *testing.T) {
 	srv := fakereco.New(t)
 	unitTest(t, resource.TestStep{
-		Config: unitProviderConfig(srv) + `
+		Config: srv.ProviderConfig() + `
 resource "reco_user" "test" {
   email_address = "x@example.com"
   name          = "X"

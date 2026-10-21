@@ -12,7 +12,7 @@ import (
 )
 
 func unitRoleConfig(srv *fakereco.Server, name, description string) string {
-	return unitProviderConfig(srv) + fmt.Sprintf(`
+	return srv.ProviderConfig() + fmt.Sprintf(`
 resource "reco_role" "test" {
   name        = %q
   description = %q
@@ -95,7 +95,7 @@ func TestRole_renameForcesReplacement(t *testing.T) {
 
 func TestRole_withResourcePermissions(t *testing.T) {
 	srv := fakereco.New(t)
-	cfg := unitProviderConfig(srv) + `
+	cfg := srv.ProviderConfig() + `
 resource "reco_role" "test" {
   name = "scoped"
   resources = [

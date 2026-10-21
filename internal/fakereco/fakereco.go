@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -75,6 +76,18 @@ func Start() *Server {
 	}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	return s
+}
+
+// ProviderConfig returns a `provider "reco"` block pointing at this fake. Its attributes take
+// precedence over the RECO_* environment variables, so tests never reach a real tenant even when
+// those are set.
+func (s *Server) ProviderConfig() string {
+	return fmt.Sprintf(`
+provider "reco" {
+  api_key  = %q
+  base_url = %q
+}
+`, APIKey, s.URL)
 }
 
 // FailWith makes every request with the given method whose path contains pathContains fail with
@@ -233,13 +246,12 @@ func (s *Server) APIKeys() []client.ApiKey {
 }
 
 func remove[T any](list *[]T, match func(T) bool) bool {
-	for i := range *list {
-		if match((*list)[i]) {
-			*list = append((*list)[:i], (*list)[i+1:]...)
-			return true
-		}
+	i := slices.IndexFunc(*list, match)
+	if i < 0 {
+		return false
 	}
-	return false
+	*list = slices.Delete(*list, i, i+1)
+	return true
 }
 
 func (s *Server) nextID(prefix string) string {

@@ -361,7 +361,7 @@ func TestClient_givesUpAfterMaxRetries(t *testing.T) {
 }
 
 func TestClient_rateLimitIsRiddenOutForLongerThanThreeAttempts(t *testing.T) {
-	// The first real-tenant run hit "rate limit exceeded" on consecutive calls; three attempts were not enough.
+	// A burst of consecutive 429s must still succeed within MaxAttempts.
 	srv, hits := flakyServer(t, 429, 429, 429, 429, 429)
 	c := client.New(srv.URL, "k", "test", client.WithRetryBackoff(noBackoff))
 
@@ -393,6 +393,45 @@ func TestClient_honorsRetryAfter(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed < 900*time.Millisecond || elapsed > 10*time.Second {
 		t.Errorf("waited %v, want about the 1s Retry-After", elapsed)
+	}
+}
+
+func TestClient_stopsRetryingWhenTheRetryBudgetIsSpent(t *testing.T) {
+	srv, hits := flakyServer(t, 429, 429, 429)
+	// The backoff alone would outlast the budget, so the client must give up after the first attempt
+	// instead of sleeping.
+	c := client.New(srv.URL, "k", "test",
+		client.WithRetryBackoff(func(int) time.Duration { return time.Hour }),
+		client.WithRetryBudget(time.Minute))
+
+	start := time.Now()
+	_, err := c.ListAllRoles(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "retry time limit") || !strings.Contains(err.Error(), "HTTP 429") {
+		t.Fatalf("want a retry-time-limit error carrying the 429, got %v", err)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Errorf("took %v; should have failed fast", time.Since(start))
+	}
+	if got := hits.Load(); got != 1 {
+		t.Errorf("made %d requests, want 1", got)
+	}
+}
+
+func TestClient_retryAfterBeyondTheBudgetFailsFast(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "120")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	c := client.New(srv.URL, "k", "test", client.WithRetryBudget(10*time.Second))
+	start := time.Now()
+	_, err := c.ListAllRoles(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "retry time limit") {
+		t.Fatalf("want a retry-time-limit error, got %v", err)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Errorf("took %v; a Retry-After beyond the budget should fail immediately", time.Since(start))
 	}
 }
 
@@ -449,7 +488,9 @@ func TestClient_malformedResponseBody(t *testing.T) {
 
 func TestClient_contextCancelStopsRetries(t *testing.T) {
 	srv, hits := flakyServer(t, 500, 500, 500)
-	c := client.New(srv.URL, "k", "test", client.WithRetryBackoff(func(int) time.Duration { return time.Hour }))
+	c := client.New(srv.URL, "k", "test",
+		client.WithRetryBackoff(func(int) time.Duration { return time.Hour }),
+		client.WithRetryBudget(48*time.Hour)) // large, so the context deadline is what stops the retries
 
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()

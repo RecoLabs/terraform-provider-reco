@@ -13,7 +13,7 @@ import (
 )
 
 func unitPostureCheckConfig(srv *fakereco.Server, title, level, extra string) string {
-	return unitProviderConfig(srv) + fmt.Sprintf(`
+	return srv.ProviderConfig() + fmt.Sprintf(`
 resource "reco_posture_check" "test" {
   title                  = %q
   description            = "unit test posture check"
