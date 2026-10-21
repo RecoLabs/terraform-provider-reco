@@ -7,15 +7,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const (
 	defaultTimeout = 30 * time.Second
-	maxRetries     = 3
+
+	// MaxAttempts is how many times a request is tried before giving up on a retryable failure
+	// (429, or 5xx for requests that are safe to repeat). With the default backoff that is a bit
+	// over a minute of waiting, enough to ride out a per-minute rate-limit window.
+	MaxAttempts = 7
+
+	maxBackoff    = 32 * time.Second
+	maxRetryAfter = 2 * time.Minute
 )
 
 type Client struct {
@@ -34,8 +43,26 @@ func WithRetryBackoff(fn func(attempt int) time.Duration) Option {
 	return func(c *Client) { c.backoff = fn }
 }
 
+// defaultBackoff waits 1s, 2s, 4s, ... capped at maxBackoff, minus up to half as jitter so several
+// clients that were throttled together do not retry in lockstep.
 func defaultBackoff(attempt int) time.Duration {
-	return time.Duration(1<<attempt) * time.Second
+	d := min(time.Duration(1)<<max(attempt-1, 0)*time.Second, maxBackoff)
+	return d - rand.N(d/2+1)
+}
+
+// retryAfter reads the Retry-After header (delta-seconds or an HTTP date); 0 means absent or unusable.
+func retryAfter(h http.Header, now time.Time) time.Duration {
+	v := strings.TrimSpace(h.Get("Retry-After"))
+	if v == "" {
+		return 0
+	}
+	var d time.Duration
+	if secs, err := strconv.Atoi(v); err == nil {
+		d = time.Duration(secs) * time.Second
+	} else if t, err := http.ParseTime(v); err == nil {
+		d = t.Sub(now)
+	}
+	return min(max(d, 0), maxRetryAfter)
 }
 
 func (c *Client) WithPageSize(n int64) *Client {
@@ -101,12 +128,18 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	}
 
 	var lastErr error
-	for attempt := range maxRetries {
+	var serverHint time.Duration // Retry-After from the previous attempt, if the server sent one
+	for attempt := range MaxAttempts {
 		if attempt > 0 {
+			wait := c.backoff(attempt)
+			if serverHint > 0 {
+				wait = serverHint
+			}
+			serverHint = 0
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case <-time.After(c.backoff(attempt)):
+			case <-time.After(wait):
 			}
 		}
 
@@ -142,6 +175,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		if resp.StatusCode == http.StatusTooManyRequests ||
 			(resp.StatusCode >= 500 && method != http.MethodPost) {
 			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+			serverHint = retryAfter(resp.Header, time.Now())
 			continue
 		}
 
@@ -160,7 +194,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		}
 		return nil
 	}
-	return fmt.Errorf("after %d attempts: %w", maxRetries, lastErr)
+	return fmt.Errorf("after %d attempts: %w", MaxAttempts, lastErr)
 }
 
 type NotFoundError struct {

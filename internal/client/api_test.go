@@ -3,6 +3,7 @@ package client_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -342,15 +343,56 @@ func TestClient_retriesGetOnTooManyRequestsAndServerErrors(t *testing.T) {
 }
 
 func TestClient_givesUpAfterMaxRetries(t *testing.T) {
-	srv, hits := flakyServer(t, 500, 500, 500, 500)
+	statuses := make([]int, client.MaxAttempts+2)
+	for i := range statuses {
+		statuses[i] = http.StatusInternalServerError
+	}
+	srv, hits := flakyServer(t, statuses...)
 	c := client.New(srv.URL, "k", "test", client.WithRetryBackoff(noBackoff))
 
 	_, err := c.ListAllRoles(t.Context())
-	if err == nil || !strings.Contains(err.Error(), "after 3 attempts") || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("want 'after 3 attempts' error carrying the body, got %v", err)
+	want := fmt.Sprintf("after %d attempts", client.MaxAttempts)
+	if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("want %q error carrying the body, got %v", want, err)
 	}
-	if got := hits.Load(); got != 3 {
-		t.Errorf("made %d requests, want 3", got)
+	if got := int(hits.Load()); got != client.MaxAttempts {
+		t.Errorf("made %d requests, want %d", got, client.MaxAttempts)
+	}
+}
+
+func TestClient_rateLimitIsRiddenOutForLongerThanThreeAttempts(t *testing.T) {
+	// The first real-tenant run hit "rate limit exceeded" on consecutive calls; three attempts were not enough.
+	srv, hits := flakyServer(t, 429, 429, 429, 429, 429)
+	c := client.New(srv.URL, "k", "test", client.WithRetryBackoff(noBackoff))
+
+	if err := c.CreateRole(t.Context(), &client.RecoCustomRole{Name: "r"}); err != nil {
+		t.Fatalf("want success once the rate limit clears, got %v", err)
+	}
+	if got := hits.Load(); got != 6 {
+		t.Errorf("made %d requests, want 6", got)
+	}
+}
+
+func TestClient_honorsRetryAfter(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if hits.Add(1) == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write([]byte(`{"roles":[]}`))
+	}))
+	defer srv.Close()
+
+	// The configured backoff would wait an hour, so only the server's hint lets this finish.
+	c := client.New(srv.URL, "k", "test", client.WithRetryBackoff(func(int) time.Duration { return time.Hour }))
+	start := time.Now()
+	if _, err := c.ListAllRoles(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed < 900*time.Millisecond || elapsed > 10*time.Second {
+		t.Errorf("waited %v, want about the 1s Retry-After", elapsed)
 	}
 }
 
