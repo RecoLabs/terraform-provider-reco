@@ -12,3 +12,22 @@ resource "reco_posture_check" "admins_without_mfa" {
   why_should_i_care      = "Administrator accounts without MFA are a common entry point for account takeover."
   tags                   = ["identity", "mfa"]
 }
+
+resource "reco_posture_check" "single_active_admin" {
+  title                  = "Fewer than two active admins"
+  data_source            = "GSUITE_USERS_API"
+  violation_risk_level   = "MEDIUM"
+  violation_risk_type    = "RISK_TYPE_USER"
+  posture_unique_jsonata = "$.primaryEmail"
+  posture_value_jsonata  = "$.primaryEmail"
+  status_jsonata         = "true_count < 2"
+
+  entities = [
+    { name = "Active accounts", jsonata = "$.suspended = false" },
+    { name = "Admins", jsonata = "$.isAdmin = true" },
+  ]
+
+  affected_entities_columns = [
+    { name = "Last login", jsonata = "$.lastLoginTime" },
+  ]
+}

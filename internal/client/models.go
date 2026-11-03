@@ -115,19 +115,36 @@ type listIntegrationsResponse struct {
 }
 
 type PostureCheckDefinition struct {
-	Title                string   `json:"title"`
-	Description          string   `json:"description,omitempty"`
-	DataSource           string   `json:"dataSource"`
-	ViolationRiskLevel   string   `json:"violationRiskLevel"`
-	ViolationRiskType    string   `json:"violationRiskType"`
-	DefaultStatus        string   `json:"defaultStatus,omitempty"`
-	PostureUniqueJsonata string   `json:"postureUniqueJsonata"`
-	PostureValueJsonata  string   `json:"postureValueJsonata,omitempty"`
-	ConditionsJsonata    string   `json:"conditionsJsonata"`
-	StatusJsonata        string   `json:"statusJsonata,omitempty"`
-	HowToRemediate       string   `json:"howToRemediate,omitempty"`
-	WhyShouldICare       string   `json:"whyShouldICare,omitempty"`
-	Tags                 []string `json:"tags,omitempty"`
+	Title                    string                  `json:"title"`
+	Description              string                  `json:"description,omitempty"`
+	DataSource               string                  `json:"dataSource"`
+	ViolationRiskLevel       string                  `json:"violationRiskLevel"`
+	ViolationRiskType        string                  `json:"violationRiskType"`
+	DefaultStatus            string                  `json:"defaultStatus,omitempty"`
+	PostureUniqueJsonata     string                  `json:"postureUniqueJsonata"`
+	PostureValueJsonata      string                  `json:"postureValueJsonata,omitempty"`
+	ConditionsJsonata        string                  `json:"conditionsJsonata"`
+	StatusJsonata            string                  `json:"statusJsonata,omitempty"`
+	HowToRemediate           string                  `json:"howToRemediate,omitempty"`
+	WhyShouldICare           string                  `json:"whyShouldICare,omitempty"`
+	Tags                     []string                `json:"tags,omitempty"`
+	Entities                 []PostureCheckEntity    `json:"entities,omitempty"`
+	AffectedEntitiesPresetID string                  `json:"affectedEntitiesPresetId,omitempty"`
+	AffectedEntitiesColumns  []PostureEntitiesColumn `json:"affectedEntitiesColumns,omitempty"`
+}
+
+type PostureCheckEntity struct {
+	Name    string `json:"name,omitempty"`
+	Jsonata string `json:"jsonata"`
+}
+
+type PostureEntitiesColumn struct {
+	Name    string `json:"name"`
+	Jsonata string `json:"jsonata"`
+}
+
+type getPostureCheckResponse struct {
+	Definition PostureCheckDefinition `json:"definition"`
 }
 
 type CreatePostureCheckRequest struct {

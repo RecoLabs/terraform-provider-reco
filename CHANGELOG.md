@@ -13,3 +13,4 @@ FEATURES:
 * **New Data Source:** `reco_policies`
 * **New Data Source:** `reco_posture_checks`
 * **New Data Source:** `reco_integrations`
+* `reco_posture_check` reads the full definition from Reco, so changes made outside Terraform are detected and import fills every attribute. It also supports `entities`, `affected_entities_preset_id` and `affected_entities_columns`.

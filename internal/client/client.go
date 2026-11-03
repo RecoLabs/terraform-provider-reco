@@ -306,6 +306,14 @@ func (c *Client) GetPostureCheckByID(ctx context.Context, id string) (*PostureCh
 	return &resp.PostureChecks[0], nil
 }
 
+func (c *Client) GetPostureCheckDefinition(ctx context.Context, id string) (*PostureCheckDefinition, error) {
+	var resp getPostureCheckResponse
+	if err := c.do(ctx, http.MethodGet, "/posture-checks/"+url.PathEscape(id), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Definition, nil
+}
+
 func (c *Client) UpdatePostureCheck(ctx context.Context, id string, def *PostureCheckDefinition) error {
 	return c.do(ctx, http.MethodPut, "/posture-checks/update", UpdatePostureCheckRequest{ID: id, Definition: *def}, nil)
 }
