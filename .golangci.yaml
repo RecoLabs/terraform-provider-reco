@@ -74,6 +74,11 @@ linters:
       - pattern: (^|\.)RedisDB_REDIS_DB_RUNTIME_CONTEXT$
         pkg: ^github\.com/recolabs/reco/reco-proto/gen/go/data/redis/v1$
         msg: open redis-runtime-context only in the runtime-policy-service, kafka-dbs-sink-daemon or prompt-label-daemon main.go
+      # common-go/aws refuses platform AWS on Azure and marks customer and federated loads,
+      # so AWS config is never loaded straight from the SDK.
+      - pattern: (^|\.)LoadDefaultConfig$
+        pkg: ^github\.com/aws/aws-sdk-go-v2/config$
+        msg: load AWS config through common-go/aws (LoadDefaultConfig or LoadDefaultConfigFor), not the SDK
     funlen:
       lines: 100
       statements: 50
@@ -140,6 +145,11 @@ linters:
       linters:
       - forbidigo
       text: redis-runtime-context
+    # common-go/aws is the one wrapper around the SDK loader.
+    - path: ^aws/allowance\.go$
+      linters:
+      - forbidigo
+      text: load AWS config through common-go/aws
     # clickhouse-go v2.34's driver.Batch has Abort and Send but no Close, so chbatchclosecheck
     # cannot be satisfied; release each batch with Send or a deferred Abort instead.
     - linters:
