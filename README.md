@@ -67,11 +67,28 @@ Requires Go (see `go.mod`).
 
 ```bash
 make build     # build the provider binary
-make test      # unit tests
+make test      # unit tests (offline, against a fake API; needs a terraform binary on PATH)
+make cover     # unit tests with the race detector and the coverage gate CI enforces
 make testacc   # acceptance tests against a live tenant (needs RECO_API_KEY and RECO_BASE_URL)
+make sweep     # delete tf-acc-* objects leaked by interrupted acceptance runs
 make generate  # regenerate docs/
 make lint
 ```
+
+### Testing
+
+- **Unit tests** (`make test`) run the real provider against `internal/fakereco`, an in-memory fake
+  of the Reco API, so they need no tenant or credentials. They cover the client (retries,
+  pagination, filters), the provider configuration, and the create, read, update, import and drift
+  behaviour of every resource and data source.
+- **Acceptance tests** (`make testacc`, the `TestAcc*` tests) exercise the same flows end to end
+  against a real tenant. They create objects named `tf-acc-*` and clean up after themselves;
+  `make sweep` removes any that a killed run leaked. To try them without a tenant, run
+  `go run ./internal/fakereco/cmd/fakereco` and point `RECO_BASE_URL` at the URL it prints, with
+  `RECO_API_KEY=fake-api-key`.
+- CI (`tf-provider-ci.yml` and `tf-provider-acceptance.yml` in the monorepo) runs both on every pull request
+  that touches the provider. The acceptance workflow needs the `RECO_TERRAFORM_TEST_API_KEY` and
+  `RECO_TERRAFORM_TEST_BASE_URL` secrets and is skipped, with a warning, when they are absent.
 
 To run a local build with Terraform, point a `dev_overrides` block at your `GOBIN`:
 

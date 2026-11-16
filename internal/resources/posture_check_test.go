@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/recolabs/terraform-provider-reco/internal/acctestutil"
 	"github.com/recolabs/terraform-provider-reco/internal/client"
 )
 
@@ -23,8 +24,8 @@ func TestAccPostureCheck_basic(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	title := fmt.Sprintf("TF Acc Posture Check %d", ts)
+	ts := acctestutil.Suffix()
+	title := fmt.Sprintf("tf-acc-posture-check-%s", ts)
 	renamed := title + " Renamed"
 
 	resource.Test(t, resource.TestCase{
@@ -92,7 +93,7 @@ func TestAccPostureCheck_entities(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	title := fmt.Sprintf("TF Acc Posture Entities %d", testTimestamp())
+	title := fmt.Sprintf("tf-acc-posture-entities-%s", acctestutil.Suffix())
 	oneColumn := `[{ name = "Is Admin", jsonata = "payload.isAdmin" }]`
 	twoColumns := `[
     { name = "Is Admin", jsonata = "payload.isAdmin" },
@@ -161,7 +162,7 @@ func TestAccPostureCheck_invalidConditions(t *testing.T) {
 				Steps: []resource.TestStep{{
 					Config: testAccProviderConfig() + fmt.Sprintf(`
 resource "reco_posture_check" "test" {
-  title                  = "TF Acc Posture Invalid"
+  title                  = "tf-acc-posture-invalid"
   data_source            = "GSUITE_USERS_API"
   violation_risk_level   = "LOW"
   violation_risk_type    = "RISK_TYPE_USER"
@@ -183,8 +184,8 @@ func TestAccPostureCheck_import(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := testTimestamp()
-	title := fmt.Sprintf("TF Acc Posture Import %d", ts)
+	ts := acctestutil.Suffix()
+	title := fmt.Sprintf("tf-acc-posture-import-%s", ts)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),

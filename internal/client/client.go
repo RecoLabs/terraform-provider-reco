@@ -7,21 +7,152 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 const (
 	defaultTimeout = 30 * time.Second
-	maxRetries     = 3
+
+	// MaxAttempts is how many times a request is tried before giving up on a retryable failure
+	// (429, or 5xx for requests that are safe to repeat). With the default backoff the waits add up
+	// to at least 63s, enough to ride out a per-minute rate-limit window.
+	MaxAttempts = 7
+
+	// defaultRetryBudget caps the wall-clock time one request may spend, retries included, so a
+	// throttled `terraform plan` fails in a couple of minutes instead of appearing to hang.
+	defaultRetryBudget = 2 * time.Minute
+
+	maxBackoff    = 32 * time.Second
+	maxRetryAfter = 2 * time.Minute
+
+	// DefaultWriteInterval and DefaultReadInterval are the spacing the provider keeps between requests.
+	// The Reco API limits each API key to 20 writes (create, update, delete) and 200 requests in total
+	// per minute, and every rejected request counts as a strike: 5 strikes lock the key out for a
+	// minute, 10 for five minutes and 20 for half an hour. Staying under the limits is far cheaper than
+	// retrying after a 429. 3.2s is 18.75 writes a minute and 400ms is 150 reads a minute, which leaves
+	// room for both together under the 200 a minute cap.
+	DefaultWriteInterval = 3200 * time.Millisecond
+	DefaultReadInterval  = 400 * time.Millisecond
 )
 
 type Client struct {
 	baseURL    string
 	pageSize   int64
 	httpClient *http.Client
+	backoff    func(attempt int) time.Duration
+
+	retryBudget time.Duration
+	readPacer   *pacer
+	writePacer  *pacer
+}
+
+// Option customizes a Client created by New.
+type Option func(*Client)
+
+// WithRetryBackoff overrides how long to wait before retry attempt n (n starts at 1).
+// Tests use it to avoid sleeping between retries.
+func WithRetryBackoff(fn func(attempt int) time.Duration) Option {
+	return func(c *Client) { c.backoff = fn }
+}
+
+// WithRetryBudget overrides the total wall-clock time a single request may spend, retries included.
+// A retry whose wait would end past the budget is not attempted; the last error is returned instead.
+func WithRetryBudget(d time.Duration) Option {
+	return func(c *Client) { c.retryBudget = d }
+}
+
+// WithRequestPacing spaces requests at least readInterval (GET) and writeInterval (everything else)
+// apart, across all goroutines sharing the client, so the client stays under the API's rate limits
+// instead of being throttled. A zero interval disables pacing for that kind of request.
+func WithRequestPacing(readInterval, writeInterval time.Duration) Option {
+	return func(c *Client) {
+		c.readPacer = &pacer{interval: readInterval}
+		c.writePacer = &pacer{interval: writeInterval}
+	}
+}
+
+// pacer hands out request slots a fixed interval apart.
+type pacer struct {
+	interval time.Duration
+
+	mu   sync.Mutex
+	next time.Time
+}
+
+// reserve books the next free slot and returns how long to wait for it.
+func (p *pacer) reserve(now time.Time) time.Duration {
+	if p == nil || p.interval <= 0 {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	slot := p.next
+	if slot.Before(now) {
+		slot = now
+	}
+	p.next = slot.Add(p.interval)
+	return slot.Sub(now)
+}
+
+// pace waits for the next request slot of this kind. Slots are booked back to back, so with many
+// requests in flight (Terraform applies resources in parallel) a request can queue for minutes; waits
+// of a second or more are logged so a paced apply does not look hung.
+func (c *Client) pace(ctx context.Context, method, path string) error {
+	d := c.pacerFor(method).reserve(time.Now())
+	if d <= 0 {
+		return nil
+	}
+	if d >= time.Second {
+		tflog.Info(ctx, "Waiting for a request slot to stay under the Reco API rate limits", map[string]any{
+			"method": method,
+			"path":   path,
+			"wait":   d.Round(100 * time.Millisecond).String(),
+		})
+	}
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("canceled while waiting %s for a rate-limit slot (%s %s): %w", d.Round(time.Millisecond), method, path, ctx.Err())
+	case <-time.After(d):
+		return nil
+	}
+}
+
+func (c *Client) pacerFor(method string) *pacer {
+	if method == http.MethodGet {
+		return c.readPacer
+	}
+	return c.writePacer
+}
+
+// defaultBackoff waits 1s, 2s, 4s, ... capped at maxBackoff, plus up to half again as jitter so
+// several clients that were throttled together do not retry in lockstep. The jitter is added on top
+// so the waits never add up to less than the documented window.
+func defaultBackoff(attempt int) time.Duration {
+	d := min(time.Duration(1)<<max(attempt-1, 0)*time.Second, maxBackoff)
+	return d + rand.N(d/2+1)
+}
+
+// retryAfter reads the Retry-After header (delta-seconds or an HTTP date); 0 means absent or unusable.
+func retryAfter(h http.Header, now time.Time) time.Duration {
+	v := strings.TrimSpace(h.Get("Retry-After"))
+	if v == "" {
+		return 0
+	}
+	var d time.Duration
+	if secs, err := strconv.Atoi(v); err == nil {
+		d = time.Duration(secs) * time.Second
+	} else if t, err := http.ParseTime(v); err == nil {
+		d = t.Sub(now)
+	}
+	return min(max(d, 0), maxRetryAfter)
 }
 
 func (c *Client) WithPageSize(n int64) *Client {
@@ -36,19 +167,25 @@ func (c *Client) effectivePageSize() int64 {
 	return 1000
 }
 
-func New(baseURL, apiKey, version string) *Client {
+func New(baseURL, apiKey, version string, opts ...Option) *Client {
 	transport := &userAgentTransport{
 		base:      http.DefaultTransport,
 		userAgent: fmt.Sprintf("reco-tf-provider/%s", version),
 		apiKey:    apiKey,
 	}
-	return &Client{
+	c := &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout:   defaultTimeout,
 			Transport: transport,
 		},
+		backoff:     defaultBackoff,
+		retryBudget: defaultRetryBudget,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 type userAgentTransport struct {
@@ -71,6 +208,36 @@ func (c *Client) apiURL(path string) string {
 	return c.baseURL + "/api/v1/external-api" + path
 }
 
+// waitToRetry sleeps before retry number attempt, using the server's Retry-After hint when there is
+// one. It fails instead of sleeping when the wait would end past the retry deadline.
+func (c *Client) waitToRetry(ctx context.Context, attempt int, serverHint time.Duration, deadline time.Time, lastErr error) error {
+	wait, source := c.backoff(attempt), "backoff"
+	if serverHint > 0 {
+		wait, source = serverHint, "retry-after"
+	}
+	if time.Now().Add(wait).After(deadline) {
+		note := ""
+		if serverHint > 0 {
+			note = fmt.Sprintf("; the server asked to wait %s, which exceeds it", serverHint)
+		}
+		return fmt.Errorf("after %d attempts (retry time limit of %s reached%s): %w", attempt, c.retryBudget, note, lastErr)
+	}
+	// Without this a throttled plan or apply looks hung for up to the retry budget.
+	tflog.Warn(ctx, "Reco API request failed with a retryable error; waiting before retrying", map[string]any{
+		"attempt":      attempt,
+		"max_attempts": MaxAttempts,
+		"wait":         wait.String(),
+		"wait_source":  source,
+		"error":        lastErr.Error(),
+	})
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(wait):
+		return nil
+	}
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
 	var bodyBytes []byte
 	if body != nil {
@@ -82,14 +249,20 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	}
 
 	var lastErr error
-	for attempt := range maxRetries {
+	var serverHint time.Duration // Retry-After from the previous attempt, if the server sent one
+	var deadline time.Time       // set once the first request is admitted, so time spent pacing is not retry time
+	for attempt := range MaxAttempts {
 		if attempt > 0 {
-			wait := time.Duration(1<<attempt) * time.Second
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(wait):
+			if err := c.waitToRetry(ctx, attempt, serverHint, deadline, lastErr); err != nil {
+				return err
 			}
+			serverHint = 0
+		}
+		if err := c.pace(ctx, method, path); err != nil {
+			return err
+		}
+		if attempt == 0 {
+			deadline = time.Now().Add(c.retryBudget)
 		}
 
 		var reqBody io.Reader
@@ -124,6 +297,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		if resp.StatusCode == http.StatusTooManyRequests ||
 			(resp.StatusCode >= 500 && method != http.MethodPost) {
 			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+			serverHint = retryAfter(resp.Header, time.Now())
 			continue
 		}
 
@@ -142,7 +316,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		}
 		return nil
 	}
-	return fmt.Errorf("after %d attempts: %w", maxRetries, lastErr)
+	return fmt.Errorf("after %d attempts: %w", MaxAttempts, lastErr)
 }
 
 type NotFoundError struct {

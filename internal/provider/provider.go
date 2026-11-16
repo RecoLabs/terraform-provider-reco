@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -88,7 +90,7 @@ func (p *recoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 			"Missing Base URL",
 			"Set the base_url provider attribute or the RECO_BASE_URL environment variable.",
 		)
-	} else if !strings.HasPrefix(baseURL, "https://") {
+	} else if !isSecureBaseURL(baseURL) {
 		resp.Diagnostics.AddError(
 			"Insecure Base URL",
 			"base_url must use the https:// scheme to protect the API key in transit.",
@@ -99,7 +101,7 @@ func (p *recoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		return
 	}
 
-	c := client.New(baseURL, apiKey, p.version)
+	c := client.New(baseURL, apiKey, p.version, clientOptions(baseURL)...)
 	if ps := os.Getenv("RECO_TEST_PAGE_SIZE"); ps != "" {
 		if n, err := strconv.ParseInt(ps, 10, 64); err == nil && n > 0 {
 			c.WithPageSize(n)
@@ -107,6 +109,38 @@ func (p *recoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 	}
 	resp.DataSourceData = c
 	resp.ResourceData = c
+}
+
+// clientOptions paces requests to the real API so the provider stays under its per-key rate limits.
+// Loopback servers (local fakes used by tests) are not rate limited, so they are not paced.
+func clientOptions(baseURL string) []client.Option {
+	if isLoopbackHost(baseURL) {
+		return nil
+	}
+	return []client.Option{client.WithRequestPacing(client.DefaultReadInterval, client.DefaultWriteInterval)}
+}
+
+func isLoopbackHost(baseURL string) bool {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// isSecureBaseURL reports whether the API key may be sent to baseURL: https, or plain http to a
+// loopback host, which never leaves the machine and lets tests run against a local fake API.
+func isSecureBaseURL(baseURL string) bool {
+	if strings.HasPrefix(baseURL, "https://") {
+		return true
+	}
+	u, err := url.Parse(baseURL)
+	return err == nil && u.Scheme == "http" && isLoopbackHost(baseURL)
 }
 
 func (p *recoProvider) Resources(_ context.Context) []func() resource.Resource {
