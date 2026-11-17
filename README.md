@@ -48,6 +48,7 @@ resource "reco_user" "alice" {
 | `reco_role` | Custom RBAC role |
 | `reco_api_key` | API key |
 | `reco_posture_check` | Posture check policy |
+| `reco_compliance_framework` | Custom compliance framework with its controls |
 | `reco_threat_detection_policy` | Behavioral threat detection policy |
 | `reco_threat_detection_exclusion` | Threat detection alert suppression exclusion |
 

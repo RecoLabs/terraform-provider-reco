@@ -33,7 +33,13 @@ func init() {
 		Name: "reco_role", F: sweeperFunc(sweepRoles),
 		Dependencies: []string{"reco_user", "reco_api_key"}, // roles can't be deleted while in use
 	})
-	resource.AddTestSweepers("reco_posture_check", &resource.Sweeper{Name: "reco_posture_check", F: sweeperFunc(sweepPostureChecks)})
+	resource.AddTestSweepers("reco_compliance_framework", &resource.Sweeper{
+		Name: "reco_compliance_framework", F: sweeperFunc(sweepComplianceFrameworks),
+	})
+	resource.AddTestSweepers("reco_posture_check", &resource.Sweeper{
+		Name: "reco_posture_check", F: sweeperFunc(sweepPostureChecks),
+		Dependencies: []string{"reco_compliance_framework"}, // frameworks map controls to posture checks
+	})
 	resource.AddTestSweepers("reco_threat_detection_exclusion", &resource.Sweeper{
 		Name: "reco_threat_detection_exclusion", F: sweeperFunc(sweepExclusions),
 	})
@@ -151,6 +157,23 @@ func sweepPolicies(ctx context.Context, c *client.Client) error {
 		if isSweepable(policies[i].Name) {
 			if err := c.DeleteThreatDetectionPolicy(ctx, policies[i].ID); err != nil && !client.IsNotFound(err) {
 				errs = append(errs, fmt.Errorf("delete policy %q: %w", policies[i].Name, err))
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func sweepComplianceFrameworks(ctx context.Context, c *client.Client) error {
+	frameworks, err := c.ListAllComplianceFrameworks(ctx)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for i := range frameworks {
+		// Built-in frameworks cannot be deleted, and must never be touched.
+		if isSweepable(frameworks[i].Title) && frameworks[i].IsCustom {
+			if err := c.DeleteComplianceFramework(ctx, frameworks[i].ID); err != nil && !client.IsNotFound(err) {
+				errs = append(errs, fmt.Errorf("delete compliance framework %q: %w", frameworks[i].Title, err))
 			}
 		}
 	}

@@ -33,6 +33,9 @@ func TestSweepers_deleteOnlyAcceptanceTestObjects(t *testing.T) {
 	srv.SeedPostureCheck(client.PostureCheck{Name: "tf-acc-posture"})
 	srv.SeedPostureCheck(client.PostureCheck{Name: "Real posture check"})
 
+	srv.SeedComplianceFramework(client.ComplianceFramework{Title: "tf-acc-framework"}, nil)
+	srv.SeedComplianceFramework(client.ComplianceFramework{Title: "Real framework"}, nil)
+
 	srv.SeedPolicy(client.ThreatDetectionPolicy{Name: "tf-acc-policy"})
 	srv.SeedPolicy(client.ThreatDetectionPolicy{Name: "Real ITDR policy"})
 
@@ -42,6 +45,7 @@ func TestSweepers_deleteOnlyAcceptanceTestObjects(t *testing.T) {
 	for name, sweep := range map[string]func(context.Context, *client.Client) error{
 		"users": sweepUsers, "roles": sweepRoles, "api keys": sweepAPIKeys,
 		"posture checks": sweepPostureChecks, "policies": sweepPolicies, "exclusions": sweepExclusions,
+		"compliance frameworks": sweepComplianceFrameworks,
 	} {
 		if err := sweep(ctx, c); err != nil {
 			t.Fatalf("sweep %s: %v", name, err)
@@ -78,6 +82,12 @@ func TestSweepers_deleteOnlyAcceptanceTestObjects(t *testing.T) {
 	assertSet(t, "posture checks", checks, "Real posture check")
 	assertSet(t, "policies", policies, "Real ITDR policy")
 	assertSet(t, "exclusions", exclusions, "Real exclusion")
+
+	var frameworks []string //nolint:prealloc // sizes are only known after the sweep
+	for _, f := range srv.ComplianceFrameworks() {
+		frameworks = append(frameworks, f.Title)
+	}
+	assertSet(t, "compliance frameworks", frameworks, "Built-in framework", "Real framework")
 }
 
 func TestSweepers_continuePastFailedDeletes(t *testing.T) {

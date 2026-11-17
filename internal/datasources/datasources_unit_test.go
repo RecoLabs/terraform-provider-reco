@@ -100,7 +100,7 @@ func dataSourceCases() []dataSourceCase {
 				}
 			},
 			firstItem: map[string]string{
-				"id": "posture-1", "name": "check-0", "description": "a check", "severity": "LOW", "app_source": "GSUITE_USERS_API",
+				"id": "00000000-0000-4000-8000-000000000001", "name": "check-0", "description": "a check", "severity": "LOW", "app_source": "GSUITE_USERS_API",
 				"policy_type": "POLICY_TYPE_POSTURE", "apps.0": "GSUITE", "tags.0": "t1",
 			},
 		},

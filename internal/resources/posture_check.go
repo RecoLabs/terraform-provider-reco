@@ -3,7 +3,6 @@ package resources
 import (
 	"context"
 	"fmt"
-	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
@@ -35,10 +34,6 @@ const (
 	attrEntities               = "entities"
 	attrJsonata                = "jsonata"
 	attrComplianceFrameworkIDs = "compliance_framework_ids"
-)
-
-var complianceFrameworkIDPattern = regexp.MustCompile(
-	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
 )
 
 var postureJsonataAttrTypes = map[string]attr.Type{
@@ -218,7 +213,7 @@ func complianceFrameworkIDsAttribute() schema.SetAttribute {
 		ElementType: types.StringType,
 		Validators: []validator.Set{
 			setvalidator.ValueStringsAre(
-				stringvalidator.RegexMatches(complianceFrameworkIDPattern, "must be a UUID"),
+				stringvalidator.RegexMatches(tfutil.UUIDPattern, "must be a UUID"),
 			),
 		},
 	}

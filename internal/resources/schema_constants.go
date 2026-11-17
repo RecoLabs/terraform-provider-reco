@@ -5,6 +5,7 @@ const (
 	attrResource     = "resource"
 	attrResourceName = "resource_name"
 	attrName         = "name"
+	attrTitle        = "title"
 	attrDescription  = "description"
 	attrCreatedAt    = "created_at"
 

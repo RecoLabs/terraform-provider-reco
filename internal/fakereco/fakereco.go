@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/recolabs/terraform-provider-reco/internal/client"
+	"github.com/recolabs/terraform-provider-reco/internal/tfutil"
 )
 
 const (
@@ -34,9 +35,18 @@ const (
 	epoch     = "2026-01-01T00:00:00Z"
 
 	noExpiration = "1970-01-01T00:00:00Z"
+
+	// BuiltInFrameworkID is the ID of the built-in (not custom) compliance framework every fake tenant has.
+	BuiltInFrameworkID = "00000000-0000-4000-8000-00000000b001"
+
+	updatedEpoch = "2026-01-02T00:00:00Z"
 )
 
-var filterRe = regexp.MustCompile(`^(\w+) eq "((?:[^"\\]|\\.)*)"$`)
+var (
+	// A conjunction of `field eq "value"` and `field ne "value"` clauses, which is all the provider sends.
+	clauseRe    = regexp.MustCompile(`(\w+) (eq|ne) "((?:[^"\\]|\\.)*)"`)
+	filterAndRe = regexp.MustCompile(`^(\w+ (?:eq|ne) "(?:[^"\\]|\\.)*")( and \w+ (?:eq|ne) "(?:[^"\\]|\\.)*")*$`)
+)
 
 type failRule struct {
 	method, pathContains string
@@ -59,6 +69,9 @@ type Server struct {
 	exclusions           []client.ThreatDetectionExclusion
 	keys                 []client.ApiKey
 	integs               []client.Integration
+	frameworks           []client.ComplianceFramework
+	controls             map[string][]client.ComplianceControl
+	fwCache              map[string][]byte // nil unless CacheComplianceList was called
 	fails                []failRule
 	requests             []string
 }
@@ -79,6 +92,10 @@ func Start() *Server {
 			{Name: "ROLE_SECURITY_VIEWER", Description: "Read-only security viewer", Type: "USER_ROLE_TYPE_SYSTEM", Permissions: []string{"PERM_ALERTS_READ"}},
 			{Name: "ROLE_ADMIN", Description: "Administrator", Type: "USER_ROLE_TYPE_SYSTEM", Permissions: []string{"PERM_ALERTS_READ", "PERM_ADMIN"}},
 		},
+		frameworks: []client.ComplianceFramework{
+			{ID: BuiltInFrameworkID, Title: "Built-in framework", Description: "Shipped with Reco", IsCustom: false, IsActive: true, CreatedAt: epoch, UpdatedAt: epoch},
+		},
+		controls: map[string][]client.ComplianceControl{},
 	}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	return s
@@ -184,7 +201,19 @@ func (s *Server) SeedExclusion(e client.ThreatDetectionExclusion) string {
 func (s *Server) SeedPostureCheck(c client.PostureCheck) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	c.ID = s.nextID("posture")
+	c.ID = s.nextUUID()
+	return s.addPostureCheck(c)
+}
+
+// SeedPostureCheckWithID adds a posture check with the given ID, for tests that need a specific ID.
+func (s *Server) SeedPostureCheckWithID(id string, c client.PostureCheck) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c.ID = id
+	return s.addPostureCheck(c)
+}
+
+func (s *Server) addPostureCheck(c client.PostureCheck) string {
 	s.posture = append(s.posture, c)
 	s.setPostureDef(c.ID, client.PostureCheckDefinition{
 		Title: c.Name, Description: c.Description, DataSource: c.AppSource, ViolationRiskLevel: c.Severity, Tags: c.Tags,
@@ -293,11 +322,11 @@ func (s *Server) Roles() []client.RecoRole {
 	return append([]client.RecoRole(nil), s.roles...)
 }
 
-// PostureChecks returns a copy of the current posture checks.
+// PostureChecks returns a copy of the current posture checks, each with the compliance frameworks that map it.
 func (s *Server) PostureChecks() []client.PostureCheck {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]client.PostureCheck(nil), s.posture...)
+	return s.postureWithFrameworks()
 }
 
 // Policies returns a copy of the current threat detection policies.
@@ -333,6 +362,12 @@ func remove[T any](list *[]T, match func(T) bool) bool {
 func (s *Server) nextID(prefix string) string {
 	s.seq++
 	return fmt.Sprintf("%s-%d", prefix, s.seq)
+}
+
+// nextUUID returns a UUID-shaped ID for objects the real API identifies by UUID.
+func (s *Server) nextUUID() string {
+	s.seq++
+	return fmt.Sprintf("00000000-0000-4000-8000-%012d", s.seq)
 }
 
 func (s *Server) addUser(u client.RecoUser) client.RecoUser {
@@ -389,6 +424,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		s.serveAPIKeys(w, r, rest)
 	case "integrations":
 		s.serveIntegrations(w, r, rest)
+	case "compliance-frameworks":
+		s.serveComplianceFrameworks(w, r, rest)
 	default:
 		writeError(w, http.StatusNotFound, "unknown resource "+resource)
 	}
@@ -524,12 +561,12 @@ func (s *Server) servePostureChecks(w http.ResponseWriter, r *http.Request, rest
 			return
 		}
 		c := postureFromDef(&req.Definition)
-		c.ID = s.nextID("posture")
+		c.ID = s.nextUUID()
 		s.posture = append(s.posture, c)
 		s.setPostureDef(c.ID, req.Definition)
 		writeJSON(w, client.CreatePostureCheckResponse{ID: c.ID})
 	case r.Method == http.MethodGet && rest == "list":
-		page, total, ok := filterAndPage(w, r, s.posture, func(c client.PostureCheck, field string) string {
+		page, total, ok := filterAndPage(w, r, s.postureWithFrameworks(), func(c client.PostureCheck, field string) string {
 			switch field {
 			case "id":
 				return c.ID
@@ -968,15 +1005,22 @@ func filterOnly[T any](w http.ResponseWriter, r *http.Request, items []T, field 
 	if filter == "" {
 		return items, true
 	}
-	m := filterRe.FindStringSubmatch(filter)
-	if m == nil {
+	if !filterAndRe.MatchString(filter) {
 		writeError(w, http.StatusBadRequest, "unsupported filter: "+filter)
 		return nil, false
 	}
-	want := strings.NewReplacer(`\\`, `\`, `\"`, `"`).Replace(m[2])
+	unquote := strings.NewReplacer(`\\`, `\`, `\"`, `"`)
+	clauses := clauseRe.FindAllStringSubmatch(filter, -1)
 	var out []T
 	for _, it := range items {
-		if field(it, m[1]) == want {
+		matches := true
+		for _, c := range clauses {
+			if (field(it, c[1]) == unquote.Replace(c[3])) != (c[2] == "eq") {
+				matches = false
+				break
+			}
+		}
+		if matches {
 			out = append(out, it)
 		}
 	}
@@ -1042,4 +1086,215 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"message": msg})
+}
+
+// postureWithFrameworks returns the posture checks with the titles of the compliance frameworks that
+// map a control to each of them, as the real list does.
+func (s *Server) postureWithFrameworks() []client.PostureCheck {
+	out := make([]client.PostureCheck, len(s.posture))
+	for i, check := range s.posture {
+		check.ComplianceFrameworks = nil
+		for _, fw := range s.frameworks {
+			for _, control := range s.controls[fw.ID] {
+				if slices.Contains(control.RelatedPolicyIDs, check.ID) && !slices.Contains(check.ComplianceFrameworks, fw.Title) {
+					check.ComplianceFrameworks = append(check.ComplianceFrameworks, fw.Title)
+				}
+			}
+		}
+		out[i] = check
+	}
+	return out
+}
+
+// serveComplianceFrameworks mirrors the details of the real endpoints that shape the resource: the list
+// has no controls, upsert replaces every control and applies is_active only when it creates the framework,
+// built-in frameworks cannot be changed, related posture checks must exist and delete of a missing
+// framework succeeds.
+func (s *Server) serveComplianceFrameworks(w http.ResponseWriter, r *http.Request, rest string) {
+	switch {
+	case r.Method == http.MethodPost && rest == "create":
+		var req client.CreateComplianceFrameworkRequest
+		if !readJSON(w, r, &req) {
+			return
+		}
+		if req.Definition.Title == "" {
+			writeError(w, http.StatusBadRequest, "title is required")
+			return
+		}
+		fw := client.ComplianceFramework{
+			ID: s.nextUUID(), Title: req.Definition.Title, Description: req.Definition.Description,
+			Version: req.Definition.Version, Type: req.Definition.Type,
+			IsCustom: true, IsActive: req.Definition.IsActive, CreatedAt: epoch, UpdatedAt: epoch,
+		}
+		s.frameworks = append(s.frameworks, fw)
+		writeJSON(w, client.CreateComplianceFrameworkResponse{ID: fw.ID})
+	case r.Method == http.MethodGet && rest == "list":
+		if body, ok := s.fwCache[r.URL.RawQuery]; ok {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(body)
+			return
+		}
+		sorted := append([]client.ComplianceFramework(nil), s.frameworks...)
+		slices.SortFunc(sorted, func(a, b client.ComplianceFramework) int { return strings.Compare(a.Title, b.Title) })
+		page, total, ok := filterAndPage(w, r, sorted, func(f client.ComplianceFramework, field string) string {
+			switch field {
+			case "id":
+				return f.ID
+			case "title":
+				return f.Title
+			}
+			return ""
+		})
+		if ok {
+			resp := map[string]any{"totalResults": total, "itemsPerPage": len(page), "complianceFrameworks": nonNil(page)}
+			if s.fwCache != nil {
+				s.fwCache[r.URL.RawQuery], _ = json.Marshal(resp)
+			}
+			writeJSON(w, resp)
+		}
+	case r.Method == http.MethodPut && rest == "upsert":
+		s.upsertFramework(w, r)
+	case r.Method == http.MethodDelete:
+		i := slices.IndexFunc(s.frameworks, func(f client.ComplianceFramework) bool { return f.ID == rest })
+		if i >= 0 && !s.frameworks[i].IsCustom {
+			writeError(w, http.StatusForbidden, "built-in frameworks cannot be deleted")
+			return
+		}
+		if i >= 0 {
+			s.frameworks = slices.Delete(s.frameworks, i, i+1)
+			delete(s.controls, rest)
+		}
+		writeJSON(w, struct{}{}) // deleting a framework that does not exist is not an error
+	default:
+		writeError(w, http.StatusNotFound, "no such compliance-frameworks endpoint")
+	}
+}
+
+func (s *Server) upsertFramework(w http.ResponseWriter, r *http.Request) {
+	var req client.UpsertComplianceFrameworkRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if !tfutil.UUIDPattern.MatchString(req.Framework.ID) {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("id %q is not a valid UUID", req.Framework.ID))
+		return
+	}
+	if msg := invalidControlTree(req.Controls); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	for _, control := range req.Controls {
+		for _, policyID := range control.RelatedPolicyIDs {
+			if !slices.ContainsFunc(s.posture, func(c client.PostureCheck) bool { return c.ID == policyID }) {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("related_policy_id %q does not exist", policyID))
+				return
+			}
+		}
+	}
+	input := req.Framework
+	i := slices.IndexFunc(s.frameworks, func(f client.ComplianceFramework) bool { return f.ID == input.ID })
+	switch {
+	case i >= 0 && !s.frameworks[i].IsCustom:
+		writeError(w, http.StatusForbidden, "built-in frameworks cannot be edited")
+		return
+	case i >= 0:
+		fw := &s.frameworks[i] // is_active is not applied to an existing framework
+		fw.Title, fw.Description, fw.Version, fw.Type = input.Title, input.Description, input.Version, input.Type
+		fw.UpdatedAt = updatedEpoch
+	default:
+		s.frameworks = append(s.frameworks, client.ComplianceFramework{
+			ID: input.ID, Title: input.Title, Description: input.Description, Version: input.Version, Type: input.Type,
+			IsCustom: true, IsActive: input.IsActive, CreatedAt: epoch, UpdatedAt: epoch,
+		})
+	}
+	s.controls[input.ID] = req.Controls
+	writeJSON(w, struct{}{})
+}
+
+// SeedComplianceFramework adds a custom compliance framework with its controls and returns its ID.
+func (s *Server) SeedComplianceFramework(f client.ComplianceFramework, controls []client.ComplianceControl) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f.ID = s.nextUUID()
+	f.IsCustom = true
+	f.CreatedAt, f.UpdatedAt = epoch, epoch
+	s.frameworks = append(s.frameworks, f)
+	s.controls[f.ID] = controls
+	return f.ID
+}
+
+// ComplianceFrameworks returns a copy of the current compliance frameworks, the built-in one included.
+func (s *Server) ComplianceFrameworks() []client.ComplianceFramework {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]client.ComplianceFramework(nil), s.frameworks...)
+}
+
+// ComplianceControls returns a copy of a framework's controls. The API has no endpoint that does.
+func (s *Server) ComplianceControls(frameworkID string) []client.ComplianceControl {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]client.ComplianceControl(nil), s.controls[frameworkID]...)
+}
+
+// ModifyComplianceFramework changes a framework behind the provider's back, to simulate an edit made in
+// the Reco UI.
+func (s *Server) ModifyComplianceFramework(id string, modify func(*client.ComplianceFramework)) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := slices.IndexFunc(s.frameworks, func(f client.ComplianceFramework) bool { return f.ID == id })
+	if i < 0 {
+		return false
+	}
+	modify(&s.frameworks[i])
+	return true
+}
+
+// DeleteComplianceFramework removes a framework behind the provider's back.
+func (s *Server) DeleteComplianceFramework(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.controls, id)
+	return remove(&s.frameworks, func(f client.ComplianceFramework) bool { return f.ID == id })
+}
+
+// CacheComplianceList makes the compliance framework list serve repeated queries from a cache that writes never
+// invalidate, like the real API.
+func (s *Server) CacheComplianceList() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fwCache = map[string][]byte{}
+}
+
+// invalidControlTree applies the API's rules for a framework's controls: unique IDs, and parents that exist,
+// are not the control itself and do not form a cycle. It returns the reason a request is rejected, or "".
+func invalidControlTree(controls []client.ComplianceControl) string {
+	parents := make(map[string]string, len(controls))
+	for _, control := range controls {
+		if _, dup := parents[control.ControlID]; dup {
+			return fmt.Sprintf("duplicate control_id %q", control.ControlID)
+		}
+		parents[control.ControlID] = control.ParentControlID
+	}
+	for id, parent := range parents {
+		if parent == "" {
+			continue
+		}
+		if parent == id {
+			return fmt.Sprintf("control %q is its own parent", id)
+		}
+		if _, ok := parents[parent]; !ok {
+			return fmt.Sprintf("control %q has unknown parent %q", id, parent)
+		}
+	}
+	for id := range parents {
+		seen := map[string]bool{id: true}
+		for cur := parents[id]; cur != ""; cur = parents[cur] {
+			if seen[cur] {
+				return fmt.Sprintf("control %q is part of a parent cycle", id)
+			}
+			seen[cur] = true
+		}
+	}
+	return ""
 }

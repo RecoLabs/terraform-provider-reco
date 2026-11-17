@@ -170,6 +170,8 @@ type PostureCheck struct {
 	Severity    string   `json:"severity,omitempty"`
 	AppSource   string   `json:"appSource,omitempty"`
 	PolicyType  string   `json:"policyType,omitempty"`
+	// ComplianceFrameworks holds the titles of the frameworks that map a control to this check.
+	ComplianceFrameworks []string `json:"complianceFrameworks,omitempty"`
 }
 
 type listPostureChecksResponse struct {
@@ -303,4 +305,66 @@ type UpdateApiKeyResponse struct {
 
 type listApiKeysResponse struct {
 	Keys []ApiKey `json:"keys"`
+}
+
+// ComplianceFramework is a row of the compliance frameworks list. The list
+// holds metadata only: there is no endpoint that returns a framework's controls.
+type ComplianceFramework struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Type        string `json:"type,omitempty"`
+	IsCustom    bool   `json:"isCustom"`
+	IsActive    bool   `json:"isActive"`
+	CreatedAt   string `json:"createdAt,omitempty"`
+	UpdatedAt   string `json:"updatedAt,omitempty"`
+}
+
+type ComplianceFrameworkDefinition struct {
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Type        string `json:"type,omitempty"`
+	IsActive    bool   `json:"isActive"`
+}
+
+type CreateComplianceFrameworkRequest struct {
+	Definition ComplianceFrameworkDefinition `json:"definition"`
+}
+
+type CreateComplianceFrameworkResponse struct {
+	ID string `json:"id"`
+}
+
+type ComplianceFrameworkInput struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Type        string `json:"type,omitempty"`
+	IsActive    bool   `json:"isActive"`
+}
+
+type ComplianceControl struct {
+	ControlID        string   `json:"controlId"`
+	Title            string   `json:"title,omitempty"`
+	Description      string   `json:"description,omitempty"`
+	ParentControlID  string   `json:"parentControlId,omitempty"`
+	RelatedPolicyIDs []string `json:"relatedPolicyIds,omitempty"`
+	Manual           bool     `json:"manual"`
+	Skipped          bool     `json:"skipped"`
+}
+
+// UpsertComplianceFrameworkRequest replaces the framework's metadata and its
+// whole control list: a request without controls deletes every control.
+type UpsertComplianceFrameworkRequest struct {
+	Framework ComplianceFrameworkInput `json:"framework"`
+	Controls  []ComplianceControl      `json:"controls"`
+}
+
+type listComplianceFrameworksResponse struct {
+	TotalResults         json.Number           `json:"totalResults"`
+	ItemsPerPage         json.Number           `json:"itemsPerPage"`
+	ComplianceFrameworks []ComplianceFramework `json:"complianceFrameworks"`
 }

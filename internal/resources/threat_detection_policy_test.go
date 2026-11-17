@@ -56,34 +56,52 @@ func TestAccThreatDetectionPolicy_instanceToStatus(t *testing.T) {
 	}
 	testAccPreCheck(t)
 
-	ts := acctestutil.Suffix()
-	title := fmt.Sprintf("tf-acc-itdr-instances-%s", ts)
-	const (
-		offID     = "00000000-0000-4000-8000-000000000001"
-		onID      = "00000000-0000-4000-8000-000000000002"
-		previewID = "00000000-0000-4000-8000-000000000003"
+	title := fmt.Sprintf("tf-acc-itdr-instances-%s", acctestutil.Suffix())
+	// The API rejects instance IDs that are not connected on the tenant, so use the tenant's own.
+	instanceIDs := testAccConnectedInstanceIDs(t, 3)
+	statuses := []string{"POLICY_STATUS_OFF", "POLICY_STATUS_ON", "POLICY_STATUS_PREVIEW"}
+	overrides := make(map[string]string, len(instanceIDs))
+	checks := make([]resource.TestCheckFunc, 0, 2+len(instanceIDs))
+	checks = append(checks,
+		resource.TestCheckResourceAttrSet("reco_threat_detection_policy.test", "id"),
+		resource.TestCheckResourceAttr("reco_threat_detection_policy.test", "default_status", "POLICY_STATUS_PREVIEW"),
 	)
+	for i, id := range instanceIDs {
+		overrides[id] = statuses[i]
+		checks = append(checks, resource.TestCheckResourceAttr("reco_threat_detection_policy.test", "instance_to_status."+id, statuses[i]))
+	}
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: providerFactories(),
 		CheckDestroy:             checkThreatDetectionPolicyDestroyed(title),
-		Steps: []resource.TestStep{
-			{
-				Config: testAccThreatDetectionPolicyInstanceConfig(title, map[string]string{
-					offID:     "POLICY_STATUS_OFF",
-					onID:      "POLICY_STATUS_ON",
-					previewID: "POLICY_STATUS_PREVIEW",
-				}),
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttrSet("reco_threat_detection_policy.test", "id"),
-					resource.TestCheckResourceAttr("reco_threat_detection_policy.test", "default_status", "POLICY_STATUS_PREVIEW"),
-					resource.TestCheckResourceAttr("reco_threat_detection_policy.test", "instance_to_status."+offID, "POLICY_STATUS_OFF"),
-					resource.TestCheckResourceAttr("reco_threat_detection_policy.test", "instance_to_status."+onID, "POLICY_STATUS_ON"),
-					resource.TestCheckResourceAttr("reco_threat_detection_policy.test", "instance_to_status."+previewID, "POLICY_STATUS_PREVIEW"),
-				),
-			},
-		},
+		Steps: []resource.TestStep{{
+			Config: testAccThreatDetectionPolicyInstanceConfig(title, overrides),
+			Check:  resource.ComposeTestCheckFunc(checks...),
+		}},
 	})
+}
+
+// testAccConnectedInstanceIDs returns up to limit connected instance IDs of the tenant, and skips the
+// test when it has none, since integrations cannot be created through the API.
+func testAccConnectedInstanceIDs(t *testing.T, limit int) []string {
+	t.Helper()
+	integrations, err := client.New(os.Getenv("RECO_BASE_URL"), os.Getenv("RECO_API_KEY"), "test").ListAllIntegrations(t.Context())
+	if err != nil {
+		t.Fatalf("list integrations: %v", err)
+	}
+	var ids []string
+	for i := range integrations {
+		if id := integrations[i].Instance.ID; id != "" && !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+		if len(ids) == limit {
+			break
+		}
+	}
+	if len(ids) == 0 {
+		t.Skip("the tenant has no connected instances to override")
+	}
+	return ids
 }
 
 func TestAccThreatDetectionPolicy_import(t *testing.T) {

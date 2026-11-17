@@ -34,7 +34,7 @@ func TestProvider_registersAllResourcesAndDataSources(t *testing.T) {
 	}
 	slices.Sort(resources)
 	wantResources := []string{
-		"reco_api_key", "reco_posture_check", "reco_role",
+		"reco_api_key", "reco_compliance_framework", "reco_posture_check", "reco_role",
 		"reco_threat_detection_exclusion", "reco_threat_detection_policy", "reco_user",
 	}
 	if !slices.Equal(resources, wantResources) {

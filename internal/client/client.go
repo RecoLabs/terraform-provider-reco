@@ -3,6 +3,8 @@ package client
 import (
 	"bytes"
 	"context"
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -508,6 +510,75 @@ func (c *Client) ListAllPostureChecks(ctx context.Context) ([]PostureCheck, erro
 		}
 		return resp.PostureChecks, total, nil
 	})
+}
+
+func (c *Client) CreateComplianceFramework(ctx context.Context, def *ComplianceFrameworkDefinition) (string, error) {
+	var resp CreateComplianceFrameworkResponse
+	if err := c.do(ctx, http.MethodPost, "/compliance-frameworks/create", CreateComplianceFrameworkRequest{Definition: *def}, &resp); err != nil {
+		return "", err
+	}
+	return resp.ID, nil
+}
+
+// uncachedComplianceFilter appends a clause that is true for every framework but is different on every call.
+//
+// The API serves compliance framework lists from a cache that is keyed by the whole query and lasts for minutes,
+// and creating, updating or deleting a framework does not invalidate it. Repeating a query after a write could
+// therefore return the framework as it was before, so a change made by Terraform, or by someone else in the UI,
+// would stay invisible until the entry expired. A query that has never been made has no entry.
+func uncachedComplianceFilter(filter string) string {
+	var nonce [8]byte
+	_, _ = cryptorand.Read(nonce[:])
+	clause := "title ne " + scimQuote("reco-tf-"+hex.EncodeToString(nonce[:]))
+	if filter == "" {
+		return clause
+	}
+	return filter + " and " + clause
+}
+
+// GetComplianceFrameworkByID returns the framework's metadata. The API has no
+// way to read its controls.
+func (c *Client) GetComplianceFrameworkByID(ctx context.Context, id string) (*ComplianceFramework, error) {
+	params := url.Values{}
+	params.Set("filters", uncachedComplianceFilter("id eq "+scimQuote(id)))
+	var resp listComplianceFrameworksResponse
+	if err := c.do(ctx, http.MethodGet, "/compliance-frameworks/list?"+params.Encode(), nil, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.ComplianceFrameworks) == 0 {
+		return nil, &NotFoundError{Message: fmt.Sprintf("compliance framework with id %q not found", id)}
+	}
+	return &resp.ComplianceFrameworks[0], nil
+}
+
+// UpsertComplianceFramework replaces the framework's metadata and all of its
+// controls. The framework's active state is only applied on creation.
+func (c *Client) UpsertComplianceFramework(ctx context.Context, req *UpsertComplianceFrameworkRequest) error {
+	if req.Controls == nil {
+		req.Controls = []ComplianceControl{}
+	}
+	return c.do(ctx, http.MethodPut, "/compliance-frameworks/upsert", req, nil)
+}
+
+func (c *Client) ListAllComplianceFrameworks(ctx context.Context) ([]ComplianceFramework, error) {
+	params := url.Values{}
+	params.Set("filters", uncachedComplianceFilter(""))
+	basePath := "/compliance-frameworks/list?" + params.Encode()
+	return paginateList[ComplianceFramework](ctx, c, basePath, func(r json.RawMessage) ([]ComplianceFramework, int64, error) {
+		var resp listComplianceFrameworksResponse
+		if err := json.Unmarshal(r, &resp); err != nil {
+			return nil, 0, err
+		}
+		total, err := resp.TotalResults.Int64()
+		if err != nil {
+			return nil, 0, fmt.Errorf("parse totalResults %q: %w", resp.TotalResults, err)
+		}
+		return resp.ComplianceFrameworks, total, nil
+	})
+}
+
+func (c *Client) DeleteComplianceFramework(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodDelete, "/compliance-frameworks/"+url.PathEscape(id), nil, nil)
 }
 
 func (c *Client) CreateThreatDetectionPolicy(ctx context.Context, def *ThreatDetectionPolicyDefinition, instanceToStatus map[string]string) (string, error) {

@@ -148,6 +148,7 @@ func (p *recoProvider) Resources(_ context.Context) []func() resource.Resource {
 		resources.NewUserResource,
 		resources.NewRoleResource,
 		resources.NewPostureCheckResource,
+		resources.NewComplianceFrameworkResource,
 		resources.NewThreatDetectionPolicyResource,
 		resources.NewThreatDetectionExclusionResource,
 		resources.NewApiKeyResource,
