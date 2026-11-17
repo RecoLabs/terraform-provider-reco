@@ -206,6 +206,66 @@ type UpdateThreatDetectionPolicyRequest struct {
 	Definition ThreatDetectionPolicyDefinition `json:"definition"`
 }
 
+const (
+	ExclusionStateOnPermanent = "VIOLATION_EXCLUSION_STATE_ON_PERMANENT"
+	ExclusionStateOnTemporary = "VIOLATION_EXCLUSION_STATE_ON_TEMPORARY"
+	ExclusionStateOff         = "VIOLATION_EXCLUSION_STATE_OFF"
+)
+
+type ThreatDetectionExclusion struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Expression  string   `json:"expression"`
+	PolicyID    string   `json:"policyId,omitempty"`
+	PolicyName  string   `json:"policyName,omitempty"`
+	Apps        []string `json:"apps,omitempty"`
+	CreatedBy   string   `json:"createdBy,omitempty"`
+	CreatedAt   *string  `json:"createdAt,omitempty"`
+	UpdatedAt   *string  `json:"updatedAt,omitempty"`
+	IsGlobal    bool     `json:"isGlobal"`
+	PolicyIDs   []string `json:"policyIds,omitempty"`
+	InstanceIDs []string `json:"instanceIds,omitempty"`
+	State       string   `json:"state,omitempty"`
+	ValidUntil  *string  `json:"validUntil,omitempty"`
+}
+
+type listThreatDetectionExclusionsResponse struct {
+	TotalResults json.Number                `json:"totalResults"`
+	ItemsPerPage json.Number                `json:"itemsPerPage"`
+	Exclusions   []ThreatDetectionExclusion `json:"exclusions"`
+}
+
+type ThreatDetectionExclusionDefinition struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Expression  string   `json:"expression"`
+	IsGlobal    bool     `json:"isGlobal"`
+	PolicyIDs   []string `json:"policyIds,omitempty"`
+	InstanceIDs []string `json:"instanceIds,omitempty"`
+}
+
+type CreateThreatDetectionExclusionRequest struct {
+	Definition ThreatDetectionExclusionDefinition `json:"definition"`
+	State      string                             `json:"state,omitempty"`
+	ValidUntil *string                            `json:"validUntil,omitempty"`
+}
+
+type CreateThreatDetectionExclusionResponse struct {
+	ID string `json:"id"`
+}
+
+type UpdateThreatDetectionExclusionRequest struct {
+	ID         string                             `json:"id"`
+	Definition ThreatDetectionExclusionDefinition `json:"definition"`
+}
+
+type SetThreatDetectionExclusionStateRequest struct {
+	ID         string  `json:"id"`
+	State      string  `json:"state"`
+	ValidUntil *string `json:"validUntil,omitempty"`
+}
+
 type ApiKey struct {
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`

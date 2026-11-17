@@ -226,6 +226,83 @@ func TestClient_threatDetectionPolicies(t *testing.T) {
 	}
 }
 
+func TestClient_threatDetectionExclusions(t *testing.T) {
+	c, _ := newFakeClient(t)
+	ctx := t.Context()
+
+	id, err := c.CreateThreatDetectionExclusion(ctx, &client.CreateThreatDetectionExclusionRequest{
+		Definition: client.ThreatDetectionExclusionDefinition{
+			Name:       "Trusted actor",
+			Expression: "true",
+			IsGlobal:   true,
+		},
+		State: client.ExclusionStateOnPermanent,
+	})
+	if err != nil || id == "" {
+		t.Fatalf("CreateThreatDetectionExclusion = %q, %v", id, err)
+	}
+	got, err := c.GetThreatDetectionExclusionByID(ctx, id)
+	if err != nil || got.Name != "Trusted actor" || got.State != client.ExclusionStateOnPermanent || got.Description != "" || got.ValidUntil != nil {
+		t.Fatalf("GetThreatDetectionExclusionByID = %+v, %v", got, err)
+	}
+
+	if err := c.UpdateThreatDetectionExclusion(ctx, &client.UpdateThreatDetectionExclusionRequest{
+		ID: id,
+		Definition: client.ThreatDetectionExclusionDefinition{
+			Name:        "Trusted actor renamed",
+			Description: "maintenance",
+			Expression:  "true",
+			IsGlobal:    true,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = c.GetThreatDetectionExclusionByID(ctx, id)
+	if err != nil || got.Name != "Trusted actor renamed" || got.State != client.ExclusionStateOnPermanent || got.Description != "maintenance" {
+		t.Fatalf("after update = %+v, %v", got, err)
+	}
+
+	until := "2099-01-01T00:00:00Z"
+	if err := c.SetThreatDetectionExclusionState(ctx, client.SetThreatDetectionExclusionStateRequest{
+		ID: id, State: client.ExclusionStateOnTemporary,
+	}); err == nil {
+		t.Fatal("ON_TEMPORARY without valid_until should fail")
+	}
+	if err := c.SetThreatDetectionExclusionState(ctx, client.SetThreatDetectionExclusionStateRequest{
+		ID: id, State: client.ExclusionStateOnTemporary, ValidUntil: &until,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = c.GetThreatDetectionExclusionByID(ctx, id)
+	if err != nil || got.State != client.ExclusionStateOnTemporary || got.ValidUntil == nil || *got.ValidUntil == until {
+		t.Fatalf("temporary state = %+v, %v", got, err)
+	}
+
+	if err := c.SetThreatDetectionExclusionState(ctx, client.SetThreatDetectionExclusionStateRequest{
+		ID: id, State: client.ExclusionStateOff, ValidUntil: &until,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = c.GetThreatDetectionExclusionByID(ctx, id)
+	if err != nil || got.State != client.ExclusionStateOff || got.ValidUntil != nil {
+		t.Fatalf("off state = %+v, %v", got, err)
+	}
+
+	all, err := c.ListAllExclusions(ctx)
+	if err != nil || len(all) != 1 {
+		t.Fatalf("ListAllExclusions = %+v, %v", all, err)
+	}
+	if err := c.DeleteThreatDetectionExclusion(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.GetThreatDetectionExclusionByID(ctx, id); !client.IsNotFound(err) {
+		t.Fatalf("after delete: want not found, got %v", err)
+	}
+	if err := c.DeleteThreatDetectionExclusion(ctx, id); !client.IsNotFound(err) {
+		t.Fatalf("second delete: want not found, got %v", err)
+	}
+}
+
 func TestClient_apiKeys(t *testing.T) {
 	c, _ := newFakeClient(t)
 	ctx := t.Context()

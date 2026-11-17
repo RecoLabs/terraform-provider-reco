@@ -7,6 +7,7 @@ FEATURES:
 * **New Resource:** `reco_api_key`
 * **New Resource:** `reco_posture_check`
 * **New Resource:** `reco_threat_detection_policy`
+* **New Resource:** `reco_threat_detection_exclusion`
 * **New Data Source:** `reco_users`
 * **New Data Source:** `reco_roles`
 * **New Data Source:** `reco_api_keys`

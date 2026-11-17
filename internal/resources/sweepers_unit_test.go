@@ -36,9 +36,12 @@ func TestSweepers_deleteOnlyAcceptanceTestObjects(t *testing.T) {
 	srv.SeedPolicy(client.ThreatDetectionPolicy{Name: "tf-acc-policy"})
 	srv.SeedPolicy(client.ThreatDetectionPolicy{Name: "Real ITDR policy"})
 
+	srv.SeedExclusion(client.ThreatDetectionExclusion{Name: "tf-acc-exclusion"})
+	srv.SeedExclusion(client.ThreatDetectionExclusion{Name: "Real exclusion"})
+
 	for name, sweep := range map[string]func(context.Context, *client.Client) error{
 		"users": sweepUsers, "roles": sweepRoles, "api keys": sweepAPIKeys,
-		"posture checks": sweepPostureChecks, "policies": sweepPolicies,
+		"posture checks": sweepPostureChecks, "policies": sweepPolicies, "exclusions": sweepExclusions,
 	} {
 		if err := sweep(ctx, c); err != nil {
 			t.Fatalf("sweep %s: %v", name, err)
@@ -49,7 +52,7 @@ func TestSweepers_deleteOnlyAcceptanceTestObjects(t *testing.T) {
 		}
 	}
 
-	var users, roles, keys, checks, policies []string //nolint:prealloc // sizes are only known after the sweep
+	var users, roles, keys, checks, policies, exclusions []string //nolint:prealloc // sizes are only known after the sweep
 	for _, u := range srv.Users() {
 		users = append(users, u.EmailAddress)
 	}
@@ -65,12 +68,16 @@ func TestSweepers_deleteOnlyAcceptanceTestObjects(t *testing.T) {
 	for _, p := range srv.Policies() {
 		policies = append(policies, p.Name)
 	}
+	for _, e := range srv.Exclusions() {
+		exclusions = append(exclusions, e.Name)
+	}
 
 	assertSet(t, "users", users, "tf-acc-b@example.com", "alice"+acctestutil.EmailDomain, "alice@acme.com")
 	assertSet(t, "roles", roles, "ROLE_SECURITY_VIEWER", "ROLE_ADMIN", "prod-role", "TF-ACC-upper", "tf-acc-system")
 	assertSet(t, "api keys", keys, "ci-deploy-key", "my-tf-acc-key")
 	assertSet(t, "posture checks", checks, "Real posture check")
 	assertSet(t, "policies", policies, "Real ITDR policy")
+	assertSet(t, "exclusions", exclusions, "Real exclusion")
 }
 
 func TestSweepers_continuePastFailedDeletes(t *testing.T) {

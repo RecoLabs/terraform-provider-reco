@@ -54,6 +54,7 @@ type Server struct {
 	posture     []client.PostureCheck
 	postureDefs map[string]client.PostureCheckDefinition
 	policies    []client.ThreatDetectionPolicy
+	exclusions  []client.ThreatDetectionExclusion
 	keys        []client.ApiKey
 	integs      []client.Integration
 	fails       []failRule
@@ -160,6 +161,23 @@ func (s *Server) SeedPolicy(p client.ThreatDetectionPolicy) string {
 	return p.ID
 }
 
+// SeedExclusion adds a threat detection exclusion and returns its generated ID.
+func (s *Server) SeedExclusion(e client.ThreatDetectionExclusion) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e.ID = s.nextID("exclusion")
+	if e.State == "" {
+		e.State = client.ExclusionStateOnPermanent
+	}
+	if e.CreatedAt == nil {
+		created := epoch
+		e.CreatedAt = &created
+		e.UpdatedAt = &created
+	}
+	s.exclusions = append(s.exclusions, e)
+	return e.ID
+}
+
 // SeedPostureCheck adds a posture check and returns its generated ID.
 func (s *Server) SeedPostureCheck(c client.PostureCheck) string {
 	s.mu.Lock()
@@ -238,6 +256,13 @@ func (s *Server) ModifyAPIKey(id string, modify func(*client.ApiKey)) bool {
 	return false
 }
 
+// DeleteExclusion removes a threat detection exclusion behind the provider's back.
+func (s *Server) DeleteExclusion(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return remove(&s.exclusions, func(e client.ThreatDetectionExclusion) bool { return e.ID == id })
+}
+
 // DeleteAPIKey removes an API key behind the provider's back.
 func (s *Server) DeleteAPIKey(id string) bool {
 	s.mu.Lock()
@@ -271,6 +296,13 @@ func (s *Server) Policies() []client.ThreatDetectionPolicy {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]client.ThreatDetectionPolicy(nil), s.policies...)
+}
+
+// Exclusions returns a copy of the current threat detection exclusions.
+func (s *Server) Exclusions() []client.ThreatDetectionExclusion {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]client.ThreatDetectionExclusion(nil), s.exclusions...)
 }
 
 // APIKeys returns a copy of the current API keys.
@@ -342,6 +374,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		s.servePostureChecks(w, r, rest)
 	case "policies":
 		s.servePolicies(w, r, rest)
+	case "exclusions":
+		s.serveExclusions(w, r, rest)
 	case "api-keys":
 		s.serveAPIKeys(w, r, rest)
 	case "integrations":
@@ -633,6 +667,185 @@ func policyFromDef(d client.ThreatDetectionPolicyDefinition) client.ThreatDetect
 		CreatedAt:  &created,
 		PolicyType: "POLICY_TYPE_THREAT_DETECTION",
 	}
+}
+
+func (s *Server) serveExclusions(w http.ResponseWriter, r *http.Request, rest string) {
+	switch {
+	case r.Method == http.MethodPost && rest == "create":
+		s.createExclusion(w, r)
+	case r.Method == http.MethodGet && rest == "list":
+		s.listExclusions(w, r)
+	case r.Method == http.MethodPut && rest == "update":
+		s.updateExclusion(w, r)
+	case r.Method == http.MethodPut && strings.HasSuffix(rest, "/state"):
+		s.setExclusionState(w, r, strings.TrimSuffix(rest, "/state"))
+	case r.Method == http.MethodDelete:
+		s.deleteExclusion(w, rest)
+	default:
+		writeError(w, http.StatusNotFound, "no such exclusions endpoint")
+	}
+}
+
+func (s *Server) createExclusion(w http.ResponseWriter, r *http.Request) {
+	var req client.CreateThreatDetectionExclusionRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if msg := validateExclusionDefinition(req.Definition); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	state := req.State
+	if state == "" {
+		state = client.ExclusionStateOnPermanent
+	}
+	until, msg := normalizeExclusionState(state, req.ValidUntil)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	ex := exclusionFromDefinition(req.Definition, s.policies)
+	ex.ID = s.nextID("exclusion")
+	ex.State = state
+	ex.ValidUntil = until
+	created := epoch
+	ex.CreatedAt = &created
+	ex.UpdatedAt = &created
+	ex.CreatedBy = "tf-test@example.com"
+	s.exclusions = append(s.exclusions, ex)
+	writeJSON(w, client.CreateThreatDetectionExclusionResponse{ID: ex.ID})
+}
+
+func (s *Server) listExclusions(w http.ResponseWriter, r *http.Request) {
+	page, total, ok := filterAndPage(w, r, s.exclusions, func(e client.ThreatDetectionExclusion, field string) string {
+		switch field {
+		case "id":
+			return e.ID
+		case "name":
+			return e.Name
+		}
+		return ""
+	})
+	if ok {
+		writeJSON(w, map[string]any{"totalResults": total, "itemsPerPage": len(page), "exclusions": nonNil(page)})
+	}
+}
+
+func (s *Server) updateExclusion(w http.ResponseWriter, r *http.Request) {
+	var req client.UpdateThreatDetectionExclusionRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if msg := validateExclusionDefinition(req.Definition); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	for i := range s.exclusions {
+		if s.exclusions[i].ID != req.ID {
+			continue
+		}
+		updated := exclusionFromDefinition(req.Definition, s.policies)
+		updated.ID = s.exclusions[i].ID
+		updated.State = s.exclusions[i].State
+		updated.ValidUntil = s.exclusions[i].ValidUntil
+		updated.CreatedAt = s.exclusions[i].CreatedAt
+		updated.CreatedBy = s.exclusions[i].CreatedBy
+		now := time.Now().UTC().Format(time.RFC3339)
+		updated.UpdatedAt = &now
+		s.exclusions[i] = updated
+		writeJSON(w, struct{}{})
+		return
+	}
+	writeError(w, http.StatusNotFound, "exclusion not found")
+}
+
+func (s *Server) setExclusionState(w http.ResponseWriter, r *http.Request, id string) {
+	var req client.SetThreatDetectionExclusionStateRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	until, msg := normalizeExclusionState(req.State, req.ValidUntil)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	for i := range s.exclusions {
+		if s.exclusions[i].ID != id {
+			continue
+		}
+		s.exclusions[i].State = req.State
+		s.exclusions[i].ValidUntil = until
+		now := time.Now().UTC().Format(time.RFC3339)
+		s.exclusions[i].UpdatedAt = &now
+		writeJSON(w, struct{}{})
+		return
+	}
+	writeError(w, http.StatusNotFound, "exclusion not found")
+}
+
+func (s *Server) deleteExclusion(w http.ResponseWriter, id string) {
+	if !remove(&s.exclusions, func(e client.ThreatDetectionExclusion) bool { return e.ID == id }) {
+		writeError(w, http.StatusNotFound, "exclusion not found")
+		return
+	}
+	writeJSON(w, struct{}{})
+}
+
+func validateExclusionDefinition(def client.ThreatDetectionExclusionDefinition) string {
+	switch {
+	case strings.TrimSpace(def.Name) == "":
+		return "name must not be empty"
+	case strings.TrimSpace(def.Expression) == "":
+		return "expression must not be empty"
+	case def.IsGlobal && len(def.PolicyIDs) > 0:
+		return "policy_ids must be empty when is_global is true"
+	case def.IsGlobal && len(def.InstanceIDs) > 0:
+		return "instance_ids must be empty when is_global is true"
+	case !def.IsGlobal && len(def.PolicyIDs) == 0:
+		return "a non-global exclusion must target at least one policy"
+	default:
+		return ""
+	}
+}
+
+func normalizeExclusionState(state string, validUntil *string) (*string, string) {
+	switch state {
+	case client.ExclusionStateOnPermanent, client.ExclusionStateOff:
+		return nil, ""
+	case client.ExclusionStateOnTemporary:
+		if validUntil == nil || strings.TrimSpace(*validUntil) == "" {
+			return nil, "valid_until is required when state = ON_TEMPORARY"
+		}
+		parsed, err := time.Parse(time.RFC3339, *validUntil)
+		if err != nil {
+			return nil, "valid_until must be an RFC3339 timestamp"
+		}
+		formatted := parsed.UTC().Format("2006-01-02T15:04:05.000000000Z07:00")
+		return &formatted, ""
+	default:
+		return nil, "unsupported exclusion state " + state
+	}
+}
+
+func exclusionFromDefinition(def client.ThreatDetectionExclusionDefinition, policies []client.ThreatDetectionPolicy) client.ThreatDetectionExclusion {
+	ex := client.ThreatDetectionExclusion{
+		Name:        def.Name,
+		Description: def.Description,
+		Expression:  def.Expression,
+		IsGlobal:    def.IsGlobal,
+		PolicyIDs:   def.PolicyIDs,
+		InstanceIDs: def.InstanceIDs,
+	}
+	if len(def.PolicyIDs) == 1 {
+		ex.PolicyID = def.PolicyIDs[0]
+		for _, policy := range policies {
+			if policy.ID == ex.PolicyID {
+				ex.PolicyName = policy.Name
+				break
+			}
+		}
+	}
+	return ex
 }
 
 func (s *Server) serveAPIKeys(w http.ResponseWriter, r *http.Request, rest string) {

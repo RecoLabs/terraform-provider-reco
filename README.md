@@ -49,6 +49,7 @@ resource "reco_user" "alice" {
 | `reco_api_key` | API key |
 | `reco_posture_check` | Posture check policy |
 | `reco_threat_detection_policy` | Behavioral threat detection policy |
+| `reco_threat_detection_exclusion` | Threat detection alert suppression exclusion |
 
 ## Data Sources
 

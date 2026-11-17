@@ -34,8 +34,12 @@ func init() {
 		Dependencies: []string{"reco_user", "reco_api_key"}, // roles can't be deleted while in use
 	})
 	resource.AddTestSweepers("reco_posture_check", &resource.Sweeper{Name: "reco_posture_check", F: sweeperFunc(sweepPostureChecks)})
+	resource.AddTestSweepers("reco_threat_detection_exclusion", &resource.Sweeper{
+		Name: "reco_threat_detection_exclusion", F: sweeperFunc(sweepExclusions),
+	})
 	resource.AddTestSweepers("reco_threat_detection_policy", &resource.Sweeper{
 		Name: "reco_threat_detection_policy", F: sweeperFunc(sweepPolicies),
+		Dependencies: []string{"reco_threat_detection_exclusion"},
 	})
 }
 
@@ -115,6 +119,22 @@ func sweepPostureChecks(ctx context.Context, c *client.Client) error {
 		if isSweepable(checks[i].Name) {
 			if err := c.DeletePostureCheck(ctx, checks[i].ID); err != nil && !client.IsNotFound(err) {
 				errs = append(errs, fmt.Errorf("delete posture check %q: %w", checks[i].Name, err))
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func sweepExclusions(ctx context.Context, c *client.Client) error {
+	exclusions, err := c.ListAllExclusions(ctx)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for i := range exclusions {
+		if isSweepable(exclusions[i].Name) {
+			if err := c.DeleteThreatDetectionExclusion(ctx, exclusions[i].ID); err != nil && !client.IsNotFound(err) {
+				errs = append(errs, fmt.Errorf("delete exclusion %q: %w", exclusions[i].Name, err))
 			}
 		}
 	}

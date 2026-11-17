@@ -541,6 +541,53 @@ func (c *Client) DeleteThreatDetectionPolicy(ctx context.Context, id string) err
 	return c.do(ctx, http.MethodDelete, "/policies/"+url.PathEscape(id), nil, nil)
 }
 
+func (c *Client) CreateThreatDetectionExclusion(ctx context.Context, req *CreateThreatDetectionExclusionRequest) (string, error) {
+	var resp CreateThreatDetectionExclusionResponse
+	if err := c.do(ctx, http.MethodPost, "/exclusions/create", req, &resp); err != nil {
+		return "", err
+	}
+	return resp.ID, nil
+}
+
+func (c *Client) GetThreatDetectionExclusionByID(ctx context.Context, id string) (*ThreatDetectionExclusion, error) {
+	params := url.Values{}
+	params.Set("filters", "id eq "+scimQuote(id))
+	var resp listThreatDetectionExclusionsResponse
+	if err := c.do(ctx, http.MethodGet, "/exclusions/list?"+params.Encode(), nil, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Exclusions) == 0 {
+		return nil, &NotFoundError{Message: fmt.Sprintf("exclusion with id %q not found", id)}
+	}
+	return &resp.Exclusions[0], nil
+}
+
+func (c *Client) UpdateThreatDetectionExclusion(ctx context.Context, req *UpdateThreatDetectionExclusionRequest) error {
+	return c.do(ctx, http.MethodPut, "/exclusions/update", req, nil)
+}
+
+func (c *Client) SetThreatDetectionExclusionState(ctx context.Context, req SetThreatDetectionExclusionStateRequest) error {
+	return c.do(ctx, http.MethodPut, "/exclusions/"+url.PathEscape(req.ID)+"/state", req, nil)
+}
+
+func (c *Client) DeleteThreatDetectionExclusion(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodDelete, "/exclusions/"+url.PathEscape(id), nil, nil)
+}
+
+func (c *Client) ListAllExclusions(ctx context.Context) ([]ThreatDetectionExclusion, error) {
+	return paginateList[ThreatDetectionExclusion](ctx, c, "/exclusions/list", func(r json.RawMessage) ([]ThreatDetectionExclusion, int64, error) {
+		var resp listThreatDetectionExclusionsResponse
+		if err := json.Unmarshal(r, &resp); err != nil {
+			return nil, 0, err
+		}
+		total, err := resp.TotalResults.Int64()
+		if err != nil {
+			return nil, 0, fmt.Errorf("parse totalResults %q: %w", resp.TotalResults, err)
+		}
+		return resp.Exclusions, total, nil
+	})
+}
+
 func (c *Client) CreateApiKey(ctx context.Context, req CreateApiKeyRequest) (*CreateApiKeyResponse, error) {
 	var resp CreateApiKeyResponse
 	if err := c.do(ctx, http.MethodPost, "/api-keys/create", req, &resp); err != nil {
