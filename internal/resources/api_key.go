@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/recolabs/terraform-provider-reco/internal/client"
 	tfutil "github.com/recolabs/terraform-provider-reco/internal/tfutil"
@@ -46,7 +49,9 @@ func (r *apiKeyResource) Metadata(_ context.Context, req resource.MetadataReques
 func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "Manages a Reco API key. The secret is returned only on creation and stored in Terraform state (sensitive). " +
-			"Changing name or role updates the key in place. Changing permitted_ips clears the list when empty.",
+			"Changing name, role, permitted_ips, or state updates the key in place. " +
+			"state defaults to APPLICATION_KEY_STATE_ACTIVE. Set APPLICATION_KEY_STATE_RETIRED to soft-retire the key without deleting it or rotating its secret. " +
+			"An empty permitted_ips list clears IP restrictions.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "API key ID (stable identifier, set after create).",
@@ -89,8 +94,12 @@ func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				},
 			},
 			"state": schema.StringAttribute{
-				Description: "Key state: APPLICATION_KEY_STATE_ACTIVE or APPLICATION_KEY_STATE_RETIRED (read-only).",
-				Computed:    true,
+				Description: "Lifecycle state: APPLICATION_KEY_STATE_ACTIVE (default) or APPLICATION_KEY_STATE_RETIRED. " +
+					"Updated in place. Retiring keeps the resource and secret. Omit to keep the key active.",
+				Optional:   true,
+				Computed:   true,
+				Default:    stringdefault.StaticString(applicationKeyStateActive),
+				Validators: []validator.String{stringvalidator.OneOf(applicationKeyStates...)},
 			},
 			attrCreatedAt: schema.StringAttribute{
 				Description: "Creation timestamp (read-only).",
@@ -132,7 +141,23 @@ func (r *apiKeyResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	plan.ID = types.StringValue(created.Key.ID)
 	plan.Secret = types.StringValue(created.Secret)
-	apiKeyToModel(&created.Key, &plan)
+	key := created.Key
+	desiredState := apiKeyState(plan.State)
+	if key.State != desiredState {
+		updated, updateErr := r.client.UpdateApiKey(ctx, &client.UpdateApiKeyRequest{
+			ID:           key.ID,
+			Name:         key.Name,
+			Role:         key.Role,
+			PermittedIps: key.PermittedIps,
+			State:        desiredState,
+		})
+		if updateErr != nil {
+			resp.Diagnostics.AddError("Error updating API key state", updateErr.Error())
+		} else {
+			key = *updated
+		}
+	}
+	apiKeyToModel(&key, &plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -172,8 +197,9 @@ func (r *apiKeyResource) Update(ctx context.Context, req resource.UpdateRequest,
 		Name:         plan.Name.ValueString(),
 		Role:         plan.Role.ValueString(),
 		PermittedIps: tfutil.ListToStringSlice(plan.PermittedIps),
+		State:        apiKeyState(plan.State),
 	}
-	updated, err := r.client.UpdateApiKey(ctx, updateReq)
+	updated, err := r.client.UpdateApiKey(ctx, &updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating API key", err.Error())
 		return
@@ -207,6 +233,13 @@ func (r *apiKeyResource) ImportState(ctx context.Context, req resource.ImportSta
 	state.Secret = types.StringValue("")
 	apiKeyToModel(key, &state)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+func apiKeyState(state types.String) string {
+	if state.IsNull() || state.IsUnknown() || state.ValueString() == "" {
+		return applicationKeyStateActive
+	}
+	return state.ValueString()
 }
 
 func apiKeyToModel(k *client.ApiKey, m *apiKeyResourceModel) {

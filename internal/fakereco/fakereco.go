@@ -224,6 +224,20 @@ func (s *Server) DeletePolicy(id string) bool {
 	return remove(&s.policies, func(p client.ThreatDetectionPolicy) bool { return p.ID == id })
 }
 
+// ModifyAPIKey changes an API key behind the provider's back, to simulate an edit made in the Reco UI.
+func (s *Server) ModifyAPIKey(id string, modify func(*client.ApiKey)) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.keys {
+		if s.keys[i].ID != id {
+			continue
+		}
+		modify(&s.keys[i])
+		return true
+	}
+	return false
+}
+
 // DeleteAPIKey removes an API key behind the provider's back.
 func (s *Server) DeleteAPIKey(id string) bool {
 	s.mu.Lock()
@@ -662,9 +676,16 @@ func (s *Server) serveAPIKeys(w http.ResponseWriter, r *http.Request, rest strin
 		}
 		for i := range s.keys {
 			if s.keys[i].ID == req.ID {
+				if req.State != "" && req.State != "APPLICATION_KEY_STATE_ACTIVE" && req.State != "APPLICATION_KEY_STATE_RETIRED" {
+					writeError(w, http.StatusBadRequest, "invalid API key state "+req.State)
+					return
+				}
 				s.keys[i].Name = req.Name
 				s.keys[i].Role = req.Role
 				s.keys[i].PermittedIps = req.PermittedIps
+				if req.State != "" {
+					s.keys[i].State = req.State
+				}
 				writeJSON(w, client.UpdateApiKeyResponse{Key: s.keys[i]})
 				return
 			}

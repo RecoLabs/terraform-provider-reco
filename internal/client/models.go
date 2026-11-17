@@ -234,6 +234,7 @@ type UpdateApiKeyRequest struct {
 	Name         string   `json:"name"`
 	Role         string   `json:"role"`
 	PermittedIps []string `json:"permittedIps"`
+	State        string   `json:"state,omitempty"`
 }
 
 type UpdateApiKeyResponse struct {

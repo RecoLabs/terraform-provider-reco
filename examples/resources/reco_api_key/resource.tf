@@ -5,6 +5,12 @@ resource "reco_api_key" "ci" {
   expiration    = "2027-12-31T00:00:00Z"
 }
 
+resource "reco_api_key" "retired" {
+  name  = "ci-pipeline-retired"
+  role  = reco_role.soc_analyst.name
+  state = "APPLICATION_KEY_STATE_RETIRED"
+}
+
 output "ci_api_key_secret" {
   value     = reco_api_key.ci.secret
   sensitive = true

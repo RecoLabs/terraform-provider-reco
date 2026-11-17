@@ -245,9 +245,26 @@ func TestClient_apiKeys(t *testing.T) {
 	if err != nil || got.Name != "key-1" {
 		t.Fatalf("GetApiKeyByID = %+v, %v", got, err)
 	}
-	updated, err := c.UpdateApiKey(ctx, client.UpdateApiKeyRequest{ID: created.Key.ID, Name: "key-2", Role: "ROLE_ADMIN", PermittedIps: []string{"10.0.0.1"}})
+	updated, err := c.UpdateApiKey(ctx, &client.UpdateApiKeyRequest{ID: created.Key.ID, Name: "key-2", Role: "ROLE_ADMIN", PermittedIps: []string{"10.0.0.1"}})
 	if err != nil || updated.Name != "key-2" || updated.Role != "ROLE_ADMIN" {
 		t.Fatalf("UpdateApiKey = %+v, %v", updated, err)
+	}
+	retired, err := c.UpdateApiKey(ctx, &client.UpdateApiKeyRequest{
+		ID: created.Key.ID, Name: "key-2", Role: "ROLE_ADMIN", State: "APPLICATION_KEY_STATE_RETIRED",
+	})
+	if err != nil || retired.State != "APPLICATION_KEY_STATE_RETIRED" || retired.ID != created.Key.ID {
+		t.Fatalf("UpdateApiKey retire = %+v, %v", retired, err)
+	}
+	reactivated, err := c.UpdateApiKey(ctx, &client.UpdateApiKeyRequest{
+		ID: created.Key.ID, Name: "key-2", Role: "ROLE_ADMIN", State: "APPLICATION_KEY_STATE_ACTIVE",
+	})
+	if err != nil || reactivated.State != "APPLICATION_KEY_STATE_ACTIVE" {
+		t.Fatalf("UpdateApiKey reactivate = %+v, %v", reactivated, err)
+	}
+	if _, err := c.UpdateApiKey(ctx, &client.UpdateApiKeyRequest{
+		ID: created.Key.ID, Name: "key-2", Role: "ROLE_ADMIN", State: "APPLICATION_KEY_STATE_DELETE",
+	}); err == nil {
+		t.Fatal("invalid API key state should fail")
 	}
 	all, err := c.ListAllApiKeys(ctx)
 	if err != nil || len(all) != 1 {

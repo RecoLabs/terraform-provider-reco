@@ -562,7 +562,7 @@ func (c *Client) GetApiKeyByID(ctx context.Context, id string) (*ApiKey, error) 
 	return nil, &NotFoundError{Message: fmt.Sprintf("API key with id %q not found", id)}
 }
 
-func (c *Client) UpdateApiKey(ctx context.Context, req UpdateApiKeyRequest) (*ApiKey, error) {
+func (c *Client) UpdateApiKey(ctx context.Context, req *UpdateApiKeyRequest) (*ApiKey, error) {
 	var resp UpdateApiKeyResponse
 	if err := c.do(ctx, http.MethodPut, "/api-keys/update", req, &resp); err != nil {
 		return nil, err

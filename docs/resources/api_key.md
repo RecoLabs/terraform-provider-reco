@@ -3,12 +3,12 @@
 page_title: "reco_api_key Resource - reco"
 subcategory: ""
 description: |-
-  Manages a Reco API key. The secret is returned only on creation and stored in Terraform state (sensitive). Changing name or role updates the key in place. Changing permitted_ips clears the list when empty.
+  Manages a Reco API key. The secret is returned only on creation and stored in Terraform state (sensitive). Changing name, role, permitted_ips, or state updates the key in place. state defaults to APPLICATION_KEY_STATE_ACTIVE. Set APPLICATION_KEY_STATE_RETIRED to soft-retire the key without deleting it or rotating its secret. An empty permitted_ips list clears IP restrictions.
 ---
 
 # reco_api_key (Resource)
 
-Manages a Reco API key. The secret is returned only on creation and stored in Terraform state (sensitive). Changing name or role updates the key in place. Changing permitted_ips clears the list when empty.
+Manages a Reco API key. The secret is returned only on creation and stored in Terraform state (sensitive). Changing name, role, permitted_ips, or state updates the key in place. state defaults to APPLICATION_KEY_STATE_ACTIVE. Set APPLICATION_KEY_STATE_RETIRED to soft-retire the key without deleting it or rotating its secret. An empty permitted_ips list clears IP restrictions.
 
 ## Example Usage
 
@@ -18,6 +18,12 @@ resource "reco_api_key" "ci" {
   role          = reco_role.soc_analyst.name
   permitted_ips = ["203.0.113.10/32"]
   expiration    = "2027-12-31T00:00:00Z"
+}
+
+resource "reco_api_key" "retired" {
+  name  = "ci-pipeline-retired"
+  role  = reco_role.soc_analyst.name
+  state = "APPLICATION_KEY_STATE_RETIRED"
 }
 
 output "ci_api_key_secret" {
@@ -38,6 +44,7 @@ output "ci_api_key_secret" {
 
 - `expiration` (String) Optional expiry timestamp in RFC3339 format.
 - `permitted_ips` (List of String) Optional IP allowlist. An empty list means unrestricted. Omit to keep unrestricted.
+- `state` (String) Lifecycle state: APPLICATION_KEY_STATE_ACTIVE (default) or APPLICATION_KEY_STATE_RETIRED. Updated in place. Retiring keeps the resource and secret. Omit to keep the key active.
 
 ### Read-Only
 
@@ -45,7 +52,6 @@ output "ci_api_key_secret" {
 - `created_by` (String) Email of the user who created this key (read-only).
 - `id` (String) API key ID (stable identifier, set after create).
 - `secret` (String, Sensitive) API key secret. Shown only once on creation — stored in Terraform state. Handle with care.
-- `state` (String) Key state: APPLICATION_KEY_STATE_ACTIVE or APPLICATION_KEY_STATE_RETIRED (read-only).
 
 ## Import
 

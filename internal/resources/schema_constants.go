@@ -9,6 +9,9 @@ const (
 	attrCreatedAt    = "created_at"
 
 	writeOnlyNote = "The Reco API does not return this value, so changes made outside Terraform are not detected and it is empty after import."
+
+	applicationKeyStateActive  = "APPLICATION_KEY_STATE_ACTIVE"
+	applicationKeyStateRetired = "APPLICATION_KEY_STATE_RETIRED"
 )
 
 var (
@@ -21,5 +24,6 @@ var (
 		"RISK_TYPE_USER_GROUP",
 		"RISK_TYPE_APPLICATION",
 	}
-	policyStatuses = []string{"POLICY_STATUS_OFF", "POLICY_STATUS_PREVIEW", "POLICY_STATUS_ON"}
+	policyStatuses       = []string{"POLICY_STATUS_OFF", "POLICY_STATUS_PREVIEW", "POLICY_STATUS_ON"}
+	applicationKeyStates = []string{applicationKeyStateActive, applicationKeyStateRetired}
 )
