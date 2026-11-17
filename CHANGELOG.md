@@ -18,5 +18,6 @@ FEATURES:
 
 ENHANCEMENTS:
 
+* `reco_threat_detection_policy` accepts `instance_to_status` on create, a map of connected instance IDs to `POLICY_STATUS_OFF`, `POLICY_STATUS_PREVIEW`, or `POLICY_STATUS_ON`. Omitting it keeps `default_status` for every instance. The update API does not accept the map, so changing or removing it replaces the policy.
 * The provider paces its requests below the Reco API's per-key rate limits (about 18 writes and 150 reads per minute, against limits of 20 and 200), so large applies no longer trip the limiter and its escalating lockouts.
 * Rate-limited (HTTP 429) and temporarily failing requests are retried with jittered backoff, honoring `Retry-After`, for at most 2 minutes per request. Each retry wait is logged at `WARN` level, and paced waits of a second or more at `INFO` level (visible with `TF_LOG=INFO`).

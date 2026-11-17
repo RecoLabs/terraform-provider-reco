@@ -196,11 +196,14 @@ func TestClient_postureChecks(t *testing.T) {
 }
 
 func TestClient_threatDetectionPolicies(t *testing.T) {
-	c, _ := newFakeClient(t)
+	c, srv := newFakeClient(t)
 	ctx := t.Context()
 
 	def := &client.ThreatDetectionPolicyDefinition{Title: "A policy title", DataSource: "GSUITE_ADMIN_AUDIT_LOG_API", ViolationRiskLevel: "HIGH"}
-	id, err := c.CreateThreatDetectionPolicy(ctx, def)
+	id, err := c.CreateThreatDetectionPolicy(ctx, def, map[string]string{
+		"instance-off": "POLICY_STATUS_OFF",
+		"instance-on":  "POLICY_STATUS_ON",
+	})
 	if err != nil || id == "" {
 		t.Fatalf("CreateThreatDetectionPolicy = %q, %v", id, err)
 	}
@@ -208,10 +211,16 @@ func TestClient_threatDetectionPolicies(t *testing.T) {
 	if err != nil || got.Name != "A policy title" || got.Severity != "HIGH" {
 		t.Fatalf("GetThreatDetectionPolicyByID = %+v, %v", got, err)
 	}
+	if status := srv.PolicyInstanceStatus(id); status["instance-off"] != "POLICY_STATUS_OFF" || status["instance-on"] != "POLICY_STATUS_ON" {
+		t.Fatalf("instance status after create = %v", status)
+	}
 
 	def.Title = "Renamed policy title"
 	if err := c.UpdateThreatDetectionPolicy(ctx, id, def); err != nil {
 		t.Fatal(err)
+	}
+	if status := srv.PolicyInstanceStatus(id); status["instance-off"] != "POLICY_STATUS_OFF" || status["instance-on"] != "POLICY_STATUS_ON" {
+		t.Fatalf("update must keep instance status from create, got %v", status)
 	}
 	all, err := c.ListAllPolicies(ctx)
 	if err != nil || len(all) != 1 || all[0].Name != "Renamed policy title" {

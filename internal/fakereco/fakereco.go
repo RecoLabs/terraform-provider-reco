@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -47,18 +48,19 @@ type failRule struct {
 type Server struct {
 	*httptest.Server
 
-	mu          sync.Mutex
-	seq         int
-	users       []client.RecoUser
-	roles       []client.RecoRole
-	posture     []client.PostureCheck
-	postureDefs map[string]client.PostureCheckDefinition
-	policies    []client.ThreatDetectionPolicy
-	exclusions  []client.ThreatDetectionExclusion
-	keys        []client.ApiKey
-	integs      []client.Integration
-	fails       []failRule
-	requests    []string
+	mu                   sync.Mutex
+	seq                  int
+	users                []client.RecoUser
+	roles                []client.RecoRole
+	posture              []client.PostureCheck
+	postureDefs          map[string]client.PostureCheckDefinition
+	policies             []client.ThreatDetectionPolicy
+	policyInstanceStatus map[string]map[string]string
+	exclusions           []client.ThreatDetectionExclusion
+	keys                 []client.ApiKey
+	integs               []client.Integration
+	fails                []failRule
+	requests             []string
 }
 
 // New starts a fake API and shuts it down when the test ends.
@@ -239,6 +241,7 @@ func (s *Server) DeletePostureCheck(id string) bool {
 func (s *Server) DeletePolicy(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	delete(s.policyInstanceStatus, id)
 	return remove(&s.policies, func(p client.ThreatDetectionPolicy) bool { return p.ID == id })
 }
 
@@ -261,6 +264,12 @@ func (s *Server) DeleteExclusion(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return remove(&s.exclusions, func(e client.ThreatDetectionExclusion) bool { return e.ID == id })
+}
+
+func (s *Server) PolicyInstanceStatus(id string) map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return copyStringMap(s.policyInstanceStatus[id])
 }
 
 // DeleteAPIKey removes an API key behind the provider's back.
@@ -612,6 +621,7 @@ func (s *Server) servePolicies(w http.ResponseWriter, r *http.Request, rest stri
 		p := policyFromDef(req.Definition)
 		p.ID = s.nextID("policy")
 		s.policies = append(s.policies, p)
+		s.setPolicyInstanceStatus(p.ID, req.InstanceToStatus)
 		writeJSON(w, client.CreateThreatDetectionPolicyResponse{ID: p.ID})
 	case r.Method == http.MethodGet && rest == "list":
 		page, total, ok := filterAndPage(w, r, s.policies, func(p client.ThreatDetectionPolicy, field string) string {
@@ -646,10 +656,31 @@ func (s *Server) servePolicies(w http.ResponseWriter, r *http.Request, rest stri
 			writeError(w, http.StatusNotFound, "policy not found")
 			return
 		}
+		delete(s.policyInstanceStatus, rest)
 		writeJSON(w, struct{}{})
 	default:
 		writeError(w, http.StatusNotFound, "no such policies endpoint")
 	}
+}
+
+func (s *Server) setPolicyInstanceStatus(id string, status map[string]string) {
+	if len(status) == 0 {
+		delete(s.policyInstanceStatus, id)
+		return
+	}
+	if s.policyInstanceStatus == nil {
+		s.policyInstanceStatus = map[string]map[string]string{}
+	}
+	s.policyInstanceStatus[id] = copyStringMap(status)
+}
+
+func copyStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(src))
+	maps.Copy(out, src)
+	return out
 }
 
 func policyFromDef(d client.ThreatDetectionPolicyDefinition) client.ThreatDetectionPolicy {

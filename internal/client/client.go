@@ -510,9 +510,12 @@ func (c *Client) ListAllPostureChecks(ctx context.Context) ([]PostureCheck, erro
 	})
 }
 
-func (c *Client) CreateThreatDetectionPolicy(ctx context.Context, def *ThreatDetectionPolicyDefinition) (string, error) {
+func (c *Client) CreateThreatDetectionPolicy(ctx context.Context, def *ThreatDetectionPolicyDefinition, instanceToStatus map[string]string) (string, error) {
 	var resp CreateThreatDetectionPolicyResponse
-	if err := c.do(ctx, http.MethodPost, "/policies/create", CreateThreatDetectionPolicyRequest{Definition: *def}, &resp); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/policies/create", CreateThreatDetectionPolicyRequest{
+		Definition:       *def,
+		InstanceToStatus: instanceToStatus,
+	}, &resp); err != nil {
 		return "", err
 	}
 	return resp.ID, nil

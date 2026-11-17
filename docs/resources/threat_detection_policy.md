@@ -20,6 +20,10 @@ resource "reco_threat_detection_policy" "admin_role_granted" {
   violation_risk_level = "MEDIUM"
   violation_risk_type  = "RISK_TYPE_USER"
   default_status       = "POLICY_STATUS_PREVIEW"
+  instance_to_status = {
+    "11111111-1111-4111-8111-111111111111" = "POLICY_STATUS_OFF"
+    "22222222-2222-4222-8222-222222222222" = "POLICY_STATUS_ON"
+  }
   conditions_jsonata   = "$.eventName = 'ASSIGN_ROLE' and $contains($.roleName, 'Admin')"
   description_template = "'Administrator role granted to ' & $.targetUser"
   how_to_remediate     = "Confirm the role assignment was approved and revoke it if not."
@@ -44,6 +48,7 @@ resource "reco_threat_detection_policy" "admin_role_granted" {
 - `default_status` (String) Initial status for new instances: POLICY_STATUS_OFF, POLICY_STATUS_PREVIEW, or POLICY_STATUS_ON. The Reco API does not return this value, so changes made outside Terraform are not detected and it is empty after import.
 - `description` (String) Longer description shown in the Reco platform. The Reco API does not return this value, so changes made outside Terraform are not detected and it is empty after import.
 - `how_to_remediate` (String) Remediation guidance shown to operators. The Reco API does not return this value, so changes made outside Terraform are not detected and it is empty after import.
+- `instance_to_status` (Map of String) Per-instance activation overrides applied when the policy is created. Keys are connected instance IDs; values are POLICY_STATUS_OFF, POLICY_STATUS_PREVIEW, or POLICY_STATUS_ON. Omitted instances keep default_status. PUT /policies/update does not accept this map, so changing or removing it replaces the policy. The Reco API does not return this value, so changes made outside Terraform are not detected and it is empty after import.
 - `tags` (List of String) Categorization tags.
 - `why_should_i_care` (String) Business context explaining why this policy matters. The Reco API does not return this value, so changes made outside Terraform are not detected and it is empty after import.
 

@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -37,6 +40,7 @@ type threatDetectionPolicyResourceModel struct {
 	ViolationRiskLevel  types.String `tfsdk:"violation_risk_level"`
 	ViolationRiskType   types.String `tfsdk:"violation_risk_type"`
 	DefaultStatus       types.String `tfsdk:"default_status"`
+	InstanceToStatus    types.Map    `tfsdk:"instance_to_status"`
 	ConditionsJsonata   types.String `tfsdk:"conditions_jsonata"`
 	DescriptionTemplate types.String `tfsdk:"description_template"`
 	HowToRemediate      types.String `tfsdk:"how_to_remediate"`
@@ -89,6 +93,19 @@ func (r *threatDetectionPolicyResource) Schema(_ context.Context, _ resource.Sch
 				Description: "Initial status for new instances: POLICY_STATUS_OFF, POLICY_STATUS_PREVIEW, or POLICY_STATUS_ON. " + writeOnlyNote,
 				Optional:    true,
 				Validators:  []validator.String{stringvalidator.OneOf(policyStatuses...)},
+			},
+			"instance_to_status": schema.MapAttribute{
+				Description: "Per-instance activation overrides applied when the policy is created. Keys are connected instance IDs; values are " +
+					"POLICY_STATUS_OFF, POLICY_STATUS_PREVIEW, or POLICY_STATUS_ON. Omitted instances keep default_status. " +
+					"PUT /policies/update does not accept this map, so changing or removing it replaces the policy. " + writeOnlyNote,
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+				Validators:  []validator.Map{mapvalidator.ValueStringsAre(stringvalidator.OneOf(policyStatuses...))},
+				PlanModifiers: []planmodifier.Map{
+					omitInstanceToStatusWhenUnset{},
+					mapplanmodifier.RequiresReplace(),
+				},
 			},
 			"conditions_jsonata": schema.StringAttribute{
 				Description: "JSONata expression that evaluates to true when an event violates the policy. " + writeOnlyNote,
@@ -143,7 +160,12 @@ func (r *threatDetectionPolicyResource) Create(ctx context.Context, req resource
 	}
 
 	def := modelToTDPolicyDef(&plan)
-	id, err := r.client.CreateThreatDetectionPolicy(ctx, &def)
+	instanceToStatus, diags := instanceToStatusFromMap(ctx, plan.InstanceToStatus)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	id, err := r.client.CreateThreatDetectionPolicy(ctx, &def, instanceToStatus)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating threat detection policy", err.Error())
 		return
@@ -227,8 +249,42 @@ func (r *threatDetectionPolicyResource) ImportState(ctx context.Context, req res
 	}
 	var state threatDetectionPolicyResourceModel
 	state.ID = types.StringValue(policy.ID)
+	state.InstanceToStatus = types.MapNull(types.StringType)
 	tdPolicyToModel(policy, &state)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+type omitInstanceToStatusWhenUnset struct{}
+
+func (omitInstanceToStatusWhenUnset) Description(context.Context) string {
+	return "Plans instance_to_status as null when configuration omits it, so policies that only set default_status do not show a diff."
+}
+
+func (m omitInstanceToStatusWhenUnset) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (omitInstanceToStatusWhenUnset) PlanModifyMap(_ context.Context, req planmodifier.MapRequest, resp *planmodifier.MapResponse) {
+	if req.ConfigValue.IsNull() {
+		resp.PlanValue = types.MapNull(types.StringType)
+	}
+}
+
+func instanceToStatusFromMap(ctx context.Context, m types.Map) (map[string]string, diag.Diagnostics) {
+	out, diags := elementsAsStringMap(ctx, m)
+	if diags.HasError() || len(out) == 0 {
+		return nil, diags
+	}
+	return out, diags
+}
+
+func elementsAsStringMap(ctx context.Context, m types.Map) (map[string]string, diag.Diagnostics) {
+	if m.IsNull() || m.IsUnknown() {
+		return map[string]string{}, nil
+	}
+	out := map[string]string{}
+	diags := m.ElementsAs(ctx, &out, false)
+	return out, diags
 }
 
 func modelToTDPolicyDef(m *threatDetectionPolicyResourceModel) client.ThreatDetectionPolicyDefinition {
