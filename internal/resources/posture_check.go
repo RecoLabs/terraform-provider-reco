@@ -3,10 +3,12 @@ package resources
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -29,9 +31,14 @@ var (
 )
 
 const (
-	attrConditionsJsonata = "conditions_jsonata"
-	attrEntities          = "entities"
-	attrJsonata           = "jsonata"
+	attrConditionsJsonata      = "conditions_jsonata"
+	attrEntities               = "entities"
+	attrJsonata                = "jsonata"
+	attrComplianceFrameworkIDs = "compliance_framework_ids"
+)
+
+var complianceFrameworkIDPattern = regexp.MustCompile(
+	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
 )
 
 var postureJsonataAttrTypes = map[string]attr.Type{
@@ -65,6 +72,7 @@ type postureCheckResourceModel struct {
 	HowToRemediate           types.String `tfsdk:"how_to_remediate"`
 	WhyShouldICare           types.String `tfsdk:"why_should_i_care"`
 	Tags                     types.List   `tfsdk:"tags"`
+	ComplianceFrameworkIDs   types.Set    `tfsdk:"compliance_framework_ids"`
 	Severity                 types.String `tfsdk:"severity"`
 	AppSource                types.String `tfsdk:"app_source"`
 }
@@ -154,6 +162,7 @@ func (r *postureCheckResource) Schema(_ context.Context, _ resource.SchemaReques
 				Computed:    true,
 				ElementType: types.StringType,
 			},
+			attrComplianceFrameworkIDs: complianceFrameworkIDsAttribute(),
 			"severity": schema.StringAttribute{
 				Description: "Severity level returned by the API (read-only).",
 				Computed:    true,
@@ -194,6 +203,23 @@ func postureEntitiesAttribute() schema.ListNestedAttribute {
 			Validators: []validator.Object{
 				objectvalidator.AlsoRequires(path.MatchRelative().AtName(attrJsonata)),
 			},
+		},
+	}
+}
+
+func complianceFrameworkIDsAttribute() schema.SetAttribute {
+	return schema.SetAttribute{
+		Description: "Compliance framework UUIDs associated with this posture check. " +
+			"Omit or set an empty list to create the check with no associations. " +
+			"A non-empty set is sent on create and update and applied in place once the API returns the IDs. " +
+			"The current external API does not return this field, so a non-empty set fails apply.",
+		Optional:    true,
+		Computed:    true,
+		ElementType: types.StringType,
+		Validators: []validator.Set{
+			setvalidator.ValueStringsAre(
+				stringvalidator.RegexMatches(complianceFrameworkIDPattern, "must be a UUID"),
+			),
 		},
 	}
 }
@@ -352,6 +378,9 @@ func modelToPostureCheckDef(m *postureCheckResourceModel) client.PostureCheckDef
 	if !m.Tags.IsNull() && !m.Tags.IsUnknown() {
 		def.Tags = tfutil.ListToStringSlice(m.Tags)
 	}
+	if ids := tfutil.SetToStringSlice(m.ComplianceFrameworkIDs); len(ids) > 0 {
+		def.ComplianceFrameworkIDs = ids
+	}
 	for _, pair := range nameJsonataPairs(m.Entities) {
 		def.Entities = append(def.Entities, client.PostureCheckEntity{Name: pair[0], Jsonata: pair[1]})
 	}
@@ -376,6 +405,7 @@ func postureCheckDefToModel(d *client.PostureCheckDefinition, m *postureCheckRes
 	m.HowToRemediate = stringOrNull(d.HowToRemediate)
 	m.WhyShouldICare = stringOrNull(d.WhyShouldICare)
 	m.Tags = tfutil.StringSliceToList(d.Tags)
+	m.ComplianceFrameworkIDs = tfutil.StringSliceToSet(d.ComplianceFrameworkIDs)
 
 	entities := make([][2]string, len(d.Entities))
 	for i, entity := range d.Entities {

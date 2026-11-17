@@ -36,3 +36,28 @@ func ListToStringSlice(l types.List) []string {
 	}
 	return out
 }
+
+func StringSliceToSet(s []string) types.Set {
+	if s == nil {
+		s = []string{}
+	}
+	elems := make([]attr.Value, len(s))
+	for i, v := range s {
+		elems[i] = types.StringValue(v)
+	}
+	return types.SetValueMust(types.StringType, elems)
+}
+
+func SetToStringSlice(s types.Set) []string {
+	if s.IsNull() || s.IsUnknown() {
+		return nil
+	}
+	elems := s.Elements()
+	out := make([]string, 0, len(elems))
+	for _, e := range elems {
+		if str, ok := e.(types.String); ok {
+			out = append(out, str.ValueString())
+		}
+	}
+	return out
+}

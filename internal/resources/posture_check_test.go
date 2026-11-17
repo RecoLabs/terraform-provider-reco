@@ -201,6 +201,75 @@ func TestAccPostureCheck_import(t *testing.T) {
 	})
 }
 
+func TestAccPostureCheck_complianceFrameworks(t *testing.T) {
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("TF_ACC not set; skipping acceptance test")
+	}
+	testAccPreCheck(t)
+
+	// The production external API does not persist complianceFrameworkIds on
+	// the posture-check definition, so a non-empty apply is rejected as an
+	// inconsistent result. TestPostureCheck_complianceFrameworks covers that
+	// create, in-place update, and clear lifecycle against an API that stores
+	// the field. This test covers what the live API already does: a check
+	// with no associations, and rejecting a malformed UUID before any call.
+	title := fmt.Sprintf("tf-acc-posture-frameworks-%s", acctestutil.Suffix())
+	var createdID string
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: providerFactories(),
+		CheckDestroy:             checkPostureCheckDestroyed(title),
+		Steps: []resource.TestStep{
+			{
+				// Plan-only, and not the last step: destroy plans the final
+				// config, and this invalid value would fail that plan.
+				Config:      testAccPostureCheckFrameworksConfig(title, `compliance_framework_ids = ["not-a-uuid"]`),
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Invalid Attribute Value Match[\s\S]*must be a UUID`),
+			},
+			{
+				Config: testAccPostureCheckFrameworksConfig(title, "compliance_framework_ids = []"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(postureCheckResourceName, "compliance_framework_ids.#", "0"),
+					func(state *terraform.State) error {
+						createdID = state.RootModule().Resources[postureCheckResourceName].Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				Config: testAccPostureCheckFrameworksConfig(title, ""),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(postureCheckResourceName, "compliance_framework_ids.#", "0"),
+					func(state *terraform.State) error {
+						got := state.RootModule().Resources[postureCheckResourceName].Primary.ID
+						if got != createdID {
+							return fmt.Errorf("omitting compliance_framework_ids replaced %s with %s", createdID, got)
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+func testAccPostureCheckFrameworksConfig(title, frameworks string) string {
+	return testAccProviderConfig() + fmt.Sprintf(`
+resource "reco_posture_check" "test" {
+  title                  = %q
+  description            = "Acceptance test posture check"
+  data_source            = "GSUITE_USERS_API"
+  violation_risk_level   = "LOW"
+  violation_risk_type    = "RISK_TYPE_USER"
+  conditions_jsonata     = "true"
+  posture_unique_jsonata = "$.id"
+  posture_value_jsonata  = "$.value"
+  %s
+}
+`, title, frameworks)
+}
+
 func testAccPostureCheckConfig(title string) string {
 	return testAccProviderConfig() + fmt.Sprintf(`
 resource "reco_posture_check" "test" {

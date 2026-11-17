@@ -128,6 +128,7 @@ type PostureCheckDefinition struct {
 	HowToRemediate           string                  `json:"howToRemediate,omitempty"`
 	WhyShouldICare           string                  `json:"whyShouldICare,omitempty"`
 	Tags                     []string                `json:"tags,omitempty"`
+	ComplianceFrameworkIDs   []string                `json:"complianceFrameworkIds,omitempty"`
 	Entities                 []PostureCheckEntity    `json:"entities,omitempty"`
 	AffectedEntitiesPresetID string                  `json:"affectedEntitiesPresetId,omitempty"`
 	AffectedEntitiesColumns  []PostureEntitiesColumn `json:"affectedEntitiesColumns,omitempty"`

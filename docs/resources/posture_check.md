@@ -14,18 +14,19 @@ Manages a Reco posture check policy.
 
 ```terraform
 resource "reco_posture_check" "admins_without_mfa" {
-  title                  = "Admin accounts without MFA"
-  description            = "Flags administrator accounts that have not enrolled in multi-factor authentication."
-  data_source            = "GSUITE_USERS_API"
-  violation_risk_level   = "HIGH"
-  violation_risk_type    = "RISK_TYPE_USER"
-  default_status         = "POLICY_STATUS_PREVIEW"
-  posture_unique_jsonata = "$.primaryEmail"
-  posture_value_jsonata  = "$.primaryEmail"
-  conditions_jsonata     = "$.isAdmin = true and $.isEnrolledIn2Sv = false"
-  how_to_remediate       = "Require the administrator to enroll in 2-Step Verification."
-  why_should_i_care      = "Administrator accounts without MFA are a common entry point for account takeover."
-  tags                   = ["identity", "mfa"]
+  title                    = "Admin accounts without MFA"
+  description              = "Flags administrator accounts that have not enrolled in multi-factor authentication."
+  data_source              = "GSUITE_USERS_API"
+  violation_risk_level     = "HIGH"
+  violation_risk_type      = "RISK_TYPE_USER"
+  default_status           = "POLICY_STATUS_PREVIEW"
+  posture_unique_jsonata   = "$.primaryEmail"
+  posture_value_jsonata    = "$.primaryEmail"
+  conditions_jsonata       = "$.isAdmin = true and $.isEnrolledIn2Sv = false"
+  how_to_remediate         = "Require the administrator to enroll in 2-Step Verification."
+  why_should_i_care        = "Administrator accounts without MFA are a common entry point for account takeover."
+  tags                     = ["identity", "mfa"]
+  compliance_framework_ids = []
 }
 
 resource "reco_posture_check" "single_active_admin" {
@@ -64,6 +65,7 @@ resource "reco_posture_check" "single_active_admin" {
 
 - `affected_entities_columns` (Attributes List) Extra columns of the affected-entities table (Posture Studio "Additional Columns"). (see [below for nested schema](#nestedatt--affected_entities_columns))
 - `affected_entities_preset_id` (String) ID of the preset column set for the affected-entities table (Posture Studio "Preset Columns").
+- `compliance_framework_ids` (Set of String) Compliance framework UUIDs associated with this posture check. Omit or set an empty list to create the check with no associations. A non-empty set is sent on create and update and applied in place once the API returns the IDs. The current external API does not return this field, so a non-empty set fails apply.
 - `conditions_jsonata` (String) JSONata expression that evaluates to true when an entity violates the check. Set exactly one of `conditions_jsonata` and `entities`; the other is read back from Reco.
 - `default_status` (String) Status for new instances: POLICY_STATUS_OFF, POLICY_STATUS_PREVIEW, or POLICY_STATUS_ON. New posture checks start ON, so when this is set the provider applies it with an update right after create. Read back from Reco; empty when instances have different statuses.
 - `description` (String) Longer description shown in the Reco UI.

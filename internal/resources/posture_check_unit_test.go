@@ -261,6 +261,84 @@ resource "reco_posture_check" "test" {
 	)
 }
 
+func TestPostureCheck_complianceFrameworks(t *testing.T) {
+	srv := fakereco.New(t)
+	const (
+		frameworkA = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+		frameworkB = "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
+		frameworkC = "6ba7b812-9dad-11d1-80b4-00c04fd430c8"
+	)
+	withIDs := func(ids ...string) string {
+		quoted := make([]string, len(ids))
+		for i, id := range ids {
+			quoted[i] = fmt.Sprintf("%q", id)
+		}
+		return "compliance_framework_ids = [" + strings.Join(quoted, ", ") + "]"
+	}
+	var createdID string
+	unitTest(t,
+		resource.TestStep{
+			Config: unitPostureFrameworkConfig(srv, "Posture frameworks", withIDs(frameworkA, frameworkB)),
+			Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr("reco_posture_check.test", "compliance_framework_ids.#", "2"),
+				resource.TestCheckTypeSetElemAttr("reco_posture_check.test", "compliance_framework_ids.*", frameworkA),
+				resource.TestCheckTypeSetElemAttr("reco_posture_check.test", "compliance_framework_ids.*", frameworkB),
+				func(state *terraform.State) error {
+					createdID = state.RootModule().Resources["reco_posture_check.test"].Primary.ID
+					return nil
+				},
+			),
+		},
+		resource.TestStep{
+			Config:           unitPostureFrameworkConfig(srv, "Posture frameworks", withIDs(frameworkC)),
+			ConfigPlanChecks: expectAction("reco_posture_check.test", plancheck.ResourceActionUpdate),
+			Check: resource.ComposeTestCheckFunc(
+				func(state *terraform.State) error {
+					got := state.RootModule().Resources["reco_posture_check.test"].Primary.ID
+					if got != createdID {
+						return fmt.Errorf("framework update replaced %s with %s", createdID, got)
+					}
+					if n := len(srv.PostureChecks()); n != 1 {
+						return fmt.Errorf("framework update replaced the check, %d exist", n)
+					}
+					return nil
+				},
+				resource.TestCheckResourceAttr("reco_posture_check.test", "compliance_framework_ids.#", "1"),
+				resource.TestCheckTypeSetElemAttr("reco_posture_check.test", "compliance_framework_ids.*", frameworkC),
+			),
+		},
+		resource.TestStep{
+			Config:           unitPostureFrameworkConfig(srv, "Posture frameworks", `compliance_framework_ids = []`),
+			ConfigPlanChecks: expectAction("reco_posture_check.test", plancheck.ResourceActionUpdate),
+			Check:            resource.TestCheckResourceAttr("reco_posture_check.test", "compliance_framework_ids.#", "0"),
+		},
+	)
+	unitTest(t, resource.TestStep{
+		Config: unitPostureFrameworkConfig(srv, "Posture frameworks omitted", ""),
+		Check:  resource.TestCheckResourceAttr("reco_posture_check.test", "compliance_framework_ids.#", "0"),
+	})
+	unitTest(t, resource.TestStep{
+		Config:      unitPostureFrameworkConfig(srv, "Posture frameworks invalid", `compliance_framework_ids = ["not-a-uuid"]`),
+		PlanOnly:    true,
+		ExpectError: errorMatching(`Invalid Attribute Value Match[\s\S]*must be a UUID`),
+	})
+}
+
+func unitPostureFrameworkConfig(srv *fakereco.Server, title, frameworks string) string {
+	return srv.ProviderConfig() + fmt.Sprintf(`
+resource "reco_posture_check" "test" {
+  title                  = %q
+  data_source            = "GSUITE_USERS_API"
+  violation_risk_level   = "LOW"
+  violation_risk_type    = "RISK_TYPE_USER"
+  conditions_jsonata     = "true"
+  posture_unique_jsonata = "$.id"
+  posture_value_jsonata  = "$.value"
+  %s
+}
+`, title, frameworks)
+}
+
 func TestPostureCheck_editsMadeOutsideTerraformAreDetected(t *testing.T) {
 	srv := fakereco.New(t)
 	cfg := unitPostureCheckConfig(srv, "Posture drift remediation", "LOW", `how_to_remediate = "original"`)

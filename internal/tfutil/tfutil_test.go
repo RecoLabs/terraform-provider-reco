@@ -49,6 +49,40 @@ func TestListToStringSlice_null(t *testing.T) {
 	}
 }
 
+func TestStringSliceToSet_roundtrip(t *testing.T) {
+	in := []string{"b", "a"}
+	set := tfutil.StringSliceToSet(in)
+	out := tfutil.SetToStringSlice(set)
+	if len(out) != len(in) {
+		t.Fatalf("length mismatch: got %d, want %d", len(out), len(in))
+	}
+	seen := map[string]bool{}
+	for _, v := range out {
+		seen[v] = true
+	}
+	for _, v := range in {
+		if !seen[v] {
+			t.Fatalf("missing %q in %v", v, out)
+		}
+	}
+}
+
+func TestStringSliceToSet_nil(t *testing.T) {
+	set := tfutil.StringSliceToSet(nil)
+	if set.IsNull() || set.IsUnknown() {
+		t.Fatal("expected empty known set, got null/unknown")
+	}
+	if len(set.Elements()) != 0 {
+		t.Fatalf("expected 0 elements, got %d", len(set.Elements()))
+	}
+}
+
+func TestSetToStringSlice_null(t *testing.T) {
+	if got := tfutil.SetToStringSlice(types.SetNull(types.StringType)); got != nil {
+		t.Fatalf("expected nil for null set, got %v", got)
+	}
+}
+
 func TestSetClient_nil(t *testing.T) {
 	var c *client.Client
 	var diags diag.Diagnostics
